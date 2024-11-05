@@ -9,6 +9,9 @@ from shapely.geometry import Point, LineString
 from rtree import index
 
 class PostProcess:
+    '''
+    The post process will handle detection conversion and output generation.
+    '''
     def __init__(self, image_path, json_path, box_size, overlap_threshold, output_path, target_classes=['pt']) -> None:
         self.target_classes = target_classes
         corners, gsd = self.read_corners(image_path)
@@ -18,6 +21,9 @@ class PostProcess:
         geojson_obj.convert_to_shp(clean_detection)
 
     def read_corners(self, image_path):
+        '''
+        Reads the corner coordinates and ground sample distance (GSD) from image metadata.
+        '''
         try:
             exif_dict = piexif.load(image_path)
             user_comment = exif_dict["Exif"].get(piexif.ExifIFD.UserComment)
@@ -30,6 +36,9 @@ class PostProcess:
         return None, None
 
 class DetectionProcessor:
+    '''
+    Processes and filters detections based on specific criteria.
+    '''
     def __init__(self, input_path, gcd, box_size, overlap_threshold, target_classes):
         self.input_path = input_path
         self.gcd = gcd
@@ -39,11 +48,17 @@ class DetectionProcessor:
         self.detections = self.load_detections()
 
     def load_detections(self):
+        '''
+        Loads detections from a JSON file.
+        '''
         with open(self.input_path) as f:
             data = json.load(f)
         return data['detections']
 
     def calculate_center_and_fixed_bbox(self, detections):
+        '''
+        Calculates center points and fixes bounding box size for each detection.
+        '''
         processed_detections = []
         unprocessed_detections = []
         for det in detections:
@@ -64,6 +79,9 @@ class DetectionProcessor:
         return processed_detections, unprocessed_detections
 
     def calculate_iou(self, box1, box2):
+        '''
+        Calculates Intersection over Union (IoU) between two bounding boxes.
+        '''
         x1_inter = np.maximum(box1[:, 0], box2[:, 0])
         y1_inter = np.maximum(box1[:, 1], box2[:, 1])
         x2_inter = np.minimum(box1[:, 2], box2[:, 2])
@@ -75,6 +93,9 @@ class DetectionProcessor:
         return inter_area / np.maximum(union_area, 1e-5)
 
     def detect_and_merge(self, detections):
+        '''
+        Merges overlapping detections based on IoU.
+        '''
         detections_by_class = defaultdict(list)
         for det in detections:
             detections_by_class[det['name']].append(det)
@@ -102,12 +123,18 @@ class DetectionProcessor:
         return final_detections
 
     def process_detections(self):
+        '''
+        Processes detections and returns cleaned results.
+        '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         merged_detections = self.detect_and_merge(processed_detections)
         final_detections = merged_detections + unprocessed_detections
         return {'detections': final_detections}
 
 class GeoSHPConverter:
+    '''
+    Converts detection data to shapefiles with geospatial coordinates.
+    '''
     def __init__(self, output_path, image_path, corners):
         self.output_path = output_path
         self.top_left = (corners[1][1], corners[1][0])
@@ -122,6 +149,9 @@ class GeoSHPConverter:
         }
 
     def rotate_point(x, y, angle, image_width, image_height):
+        '''
+        Rotates a point around the center of the image by a given angle.
+        '''
         angle_rad = np.deg2rad(angle)
         center_x, center_y = image_width / 2, image_height / 2
 
@@ -139,35 +169,33 @@ class GeoSHPConverter:
 
         return rotated_x, rotated_y
 
-        
     def angle_calculator(self, corners):
-        
-        """
-        Calculate the correct rotation angle from corners
-        """
-        # Get the main edges
-        
+        '''
+        Calculates the rotation angle from the corner coordinates.
+        '''
         edge1 = [corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]]
         edge2 = [corners[3][0] - corners[0][0], corners[3][1] - corners[0][1]]
-        
+
         # Calculate lengths
         len1 = np.sqrt(edge1[0]**2 + edge1[1]**2)
         len2 = np.sqrt(edge2[0]**2 + edge2[1]**2)
-        
+
         # Use the longer edge for angle calculation
         if len1 > len2:
             dx, dy = edge1
         else:
             dx, dy = edge2
-        
+
         angle = np.arctan2(dy, dx)
         return angle
 
-
     def interpolate_to_gps(self, x, y):
+        '''
+        Interpolates image pixel coordinates to GPS coordinates.
+        '''
         norm_x = x / self.image_width
         norm_y = y / self.image_height
-        
+
         # Bilinear interpolation for longitude and latitude
         lon = (
             self.gps_corners["top_left"][0] * (1 - norm_x) * (1 - norm_y) +
@@ -175,17 +203,20 @@ class GeoSHPConverter:
             self.gps_corners["bottom_right"][0] * norm_x * norm_y +
             self.gps_corners["bottom_left"][0] * (1 - norm_x) * norm_y
         )
-        
+
         lat = (
             self.gps_corners["top_left"][1] * (1 - norm_x) * (1 - norm_y) +
             self.gps_corners["top_right"][1] * norm_x * (1 - norm_y) +
             self.gps_corners["bottom_right"][1] * norm_x * norm_y +
             self.gps_corners["bottom_left"][1] * (1 - norm_x) * norm_y
         )
-        
+
         return lat, lon
 
     def convert_to_shp(self, data):
+        '''
+        Converts detection data to a shapefile format.
+        '''
         shp_writer = shapefile.Writer(self.output_path, shapefile.POINT)
         shp_writer.field('Name', 'C')
         shp_writer.field('Confidence', 'F', decimal=2)
