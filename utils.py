@@ -7,6 +7,11 @@ from collections import defaultdict
 import shapefile
 from shapely.geometry import Point, LineString
 from rtree import index
+from collections import defaultdict
+from rtree import index
+import numpy as np
+from shapely.geometry import box
+
 
 class PostProcess:
     '''
@@ -64,8 +69,9 @@ class DetectionProcessor:
         for det in detections:
             if det['name'] in self.target_classes:
                 box = np.array(list(det['box'].values()))
+                half_size = (self.box_size / 100) / self.gcd  
                 center = (box[:2] + box[2:]) / 2
-                half_size = (self.box_size) * (self.gcd * 100)
+    
                 new_box = np.hstack([center - half_size, center + half_size])
                 det['box'] = {
                     'x1': new_box[0],
@@ -77,59 +83,75 @@ class DetectionProcessor:
             else:
                 unprocessed_detections.append(det)
         return processed_detections, unprocessed_detections
-
-    def calculate_iou(self, box1, box2):
-        '''
-        Calculates Intersection over Union (IoU) between two bounding boxes.
-        '''
-        x1_inter = np.maximum(box1[:, 0], box2[:, 0])
-        y1_inter = np.maximum(box1[:, 1], box2[:, 1])
-        x2_inter = np.minimum(box1[:, 2], box2[:, 2])
-        y2_inter = np.minimum(box1[:, 3], box2[:, 3])
-        inter_area = np.maximum(x2_inter - x1_inter, 0) * np.maximum(y2_inter - y1_inter, 0)
-        area_box1 = (box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1])
-        area_box2 = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
-        union_area = area_box1 + area_box2 - inter_area
-        return inter_area / np.maximum(union_area, 1e-5)
-
+    
+    
     def detect_and_merge(self, detections):
         '''
-        Merges overlapping detections based on IoU.
+        Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
         '''
-        detections_by_class = defaultdict(list)
-        for det in detections:
-            detections_by_class[det['name']].append(det)
-
         final_detections = []
-        for class_name, class_detections in detections_by_class.items():
-            bboxes = np.array([list(d['box'].values()) for d in class_detections])
-            rtree_idx = index.Index()
-            for i, det in enumerate(class_detections):
-                bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
-                rtree_idx.insert(i, bbox)
+        rtree_idx = index.Index()  # Initialize the R-tree index for fast spatial queries
 
-            to_keep = np.ones(len(class_detections), dtype=bool)
-            for i in range(len(class_detections)):
-                if not to_keep[i]:
-                    continue
-                overlapping_idxs = list(rtree_idx.intersection(bboxes[i]))
-                if len(overlapping_idxs) > 1:
-                    ious = self.calculate_iou(bboxes[i].reshape(1, -1), bboxes[overlapping_idxs])
-                    best_idx = overlapping_idxs[np.argmax(ious)]
-                    to_keep[overlapping_idxs] = False
-                    to_keep[best_idx] = True
+        # Add each detection to the rtree index
+        for i, det in enumerate(detections):
+            bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
+            rtree_idx.insert(i, bbox)
 
-            final_detections.extend([class_detections[i] for i in range(len(class_detections)) if to_keep[i]])
+        used = [False] * len(detections)
+
+        for i, det1 in enumerate(detections):
+            if used[i]:
+                continue
+
+            # Initialize the merged bounding box with the current detection's box
+            merged_box = det1['box']
+            used[i] = True
+            merged = True
+
+            # Iteratively merge until no more overlaps are found
+            while merged:
+                merged = False
+                overlapping_idxs = list(rtree_idx.intersection((merged_box['x1'], merged_box['y1'], merged_box['x2'], merged_box['y2'])))
+
+                for j in overlapping_idxs:
+                    if not used[j] and detections[j]['name'] == det1['name']:  # Only merge if the class is the same
+                        # Check if boxes overlap
+                        if (merged_box['x1'] < detections[j]['box']['x2'] and 
+                            merged_box['x2'] > detections[j]['box']['x1'] and
+                            merged_box['y1'] < detections[j]['box']['y2'] and 
+                            merged_box['y2'] > detections[j]['box']['y1']):
+                            
+                            # Update merged_box to encompass both boxes
+                            merged_box['x1'] = min(merged_box['x1'], detections[j]['box']['x1'])
+                            merged_box['y1'] = min(merged_box['y1'], detections[j]['box']['y1'])
+                            merged_box['x2'] = max(merged_box['x2'], detections[j]['box']['x2'])
+                            merged_box['y2'] = max(merged_box['y2'], detections[j]['box']['y2'])
+                            used[j] = True  # Mark this detection as used
+                            merged = True  # Set flag to continue merging
+
+            # Add the fully merged bounding box to the final results
+            final_detections.append({
+                'name': det1['name'],
+                'box': merged_box,
+                'confidence': det1.get('confidence', 1.0)
+            })
+
         return final_detections
+
 
     def process_detections(self):
         '''
         Processes detections and returns cleaned results.
         '''
+        # Separate detections into processed (fixed box size for target classes) and unprocessed
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
-        merged_detections = self.detect_and_merge(processed_detections)
-        final_detections = merged_detections + unprocessed_detections
-        return {'detections': final_detections}
+        
+        # Combine processed and unprocessed detections and merge them
+        combined_detections = processed_detections + unprocessed_detections
+        merged_detections = self.detect_and_merge(combined_detections)
+        
+        # return {'detections': merged_detections}
+        return {'detections': self.detections}
 
 class GeoSHPConverter:
     '''
@@ -187,6 +209,7 @@ class GeoSHPConverter:
             dx, dy = edge2
 
         angle = np.arctan2(dy, dx)
+        print(f"Angle of this image is, {angle}")
         return angle
 
     def interpolate_to_gps(self, x, y):
@@ -215,17 +238,32 @@ class GeoSHPConverter:
 
     def convert_to_shp(self, data):
         '''
-        Converts detection data to a shapefile format.
+        Converts detection data to a shapefile with bounding box polygons.
         '''
-        shp_writer = shapefile.Writer(self.output_path, shapefile.POINT)
+        shp_writer = shapefile.Writer(self.output_path, shapefile.POLYGON)
         shp_writer.field('Name', 'C')
         shp_writer.field('Confidence', 'F', decimal=2)
+
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
             x2, y2 = detection['box']['x2'], detection['box']['y2']
-            center_x = (x1 + x2) / 2
-            center_y = (y1 + y2) / 2
-            lat, lon = self.interpolate_to_gps(center_x, center_y)
-            shp_writer.point(lon, lat)
+            
+            # Convert each corner of the bounding box to GPS coordinates
+            top_left = self.interpolate_to_gps(x1, y1)
+            top_right = self.interpolate_to_gps(x2, y1)
+            bottom_right = self.interpolate_to_gps(x2, y2)
+            bottom_left = self.interpolate_to_gps(x1, y2)
+
+            # Define the polygon as a closed rectangle
+            shp_writer.poly([[
+                [top_left[1], top_left[0]],      # (lon, lat) for top-left
+                [top_right[1], top_right[0]],    # (lon, lat) for top-right
+                [bottom_right[1], bottom_right[0]],  # (lon, lat) for bottom-right
+                [bottom_left[1], bottom_left[0]],    # (lon, lat) for bottom-left
+                [top_left[1], top_left[0]]       # Closing the polygon back to top-left
+            ]])
+
+            # Record the name and confidence for each bounding box
             shp_writer.record(detection['name'], detection['confidence'])
+
         shp_writer.close()
