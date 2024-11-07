@@ -40,7 +40,7 @@ if __name__ == "__main__":
     overlap_threshold = 0.5  # Overlap threshold for merging
 
     processor = Cleaner(
-        r"C:\Users\User\Downloads\doobara-test",  # Input folder path
+        r"C:\Users\User\Downloads\Aimen-test",  # Input folder path
         r"C:\Users\User\Downloads\Aiman-file-results-test",  # Output folder path
         box_size_cm,
         overlap_threshold

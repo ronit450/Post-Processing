@@ -170,48 +170,6 @@ class GeoSHPConverter:
             "bottom_left": corners[3]
         }
 
-    def rotate_point(x, y, angle, image_width, image_height):
-        '''
-        Rotates a point around the center of the image by a given angle.
-        '''
-        angle_rad = np.deg2rad(angle)
-        center_x, center_y = image_width / 2, image_height / 2
-
-        # Translate point to origin
-        translated_x = x - center_x
-        translated_y = y - center_y
-
-        # Apply rotation matrix
-        rotated_x = translated_x * np.cos(angle_rad) - translated_y * np.sin(angle_rad)
-        rotated_y = translated_x * np.sin(angle_rad) + translated_y * np.cos(angle_rad)
-
-        # Translate point back
-        rotated_x += center_x
-        rotated_y += center_y
-
-        return rotated_x, rotated_y
-
-    def angle_calculator(self, corners):
-        '''
-        Calculates the rotation angle from the corner coordinates.
-        '''
-        edge1 = [corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]]
-        edge2 = [corners[3][0] - corners[0][0], corners[3][1] - corners[0][1]]
-
-        # Calculate lengths
-        len1 = np.sqrt(edge1[0]**2 + edge1[1]**2)
-        len2 = np.sqrt(edge2[0]**2 + edge2[1]**2)
-
-        # Use the longer edge for angle calculation
-        if len1 > len2:
-            dx, dy = edge1
-        else:
-            dx, dy = edge2
-
-        angle = np.arctan2(dy, dx)
-        print(f"Angle of this image is, {angle}")
-        return angle
-
     def interpolate_to_gps(self, x, y):
         '''
         Interpolates image pixel coordinates to GPS coordinates.
