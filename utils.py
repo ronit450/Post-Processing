@@ -90,9 +90,7 @@ class DetectionProcessor:
         Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
         '''
         final_detections = []
-        rtree_idx = index.Index()  # Initialize the R-tree index for fast spatial queries
-
-        # Add each detection to the rtree index
+        rtree_idx = index.Index() 
         for i, det in enumerate(detections):
             bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
             rtree_idx.insert(i, bbox)
@@ -102,34 +100,29 @@ class DetectionProcessor:
         for i, det1 in enumerate(detections):
             if used[i]:
                 continue
-
-            # Initialize the merged bounding box with the current detection's box
             merged_box = det1['box']
             used[i] = True
             merged = True
 
-            # Iteratively merge until no more overlaps are found
             while merged:
                 merged = False
                 overlapping_idxs = list(rtree_idx.intersection((merged_box['x1'], merged_box['y1'], merged_box['x2'], merged_box['y2'])))
 
                 for j in overlapping_idxs:
-                    if not used[j] and detections[j]['name'] == det1['name']:  # Only merge if the class is the same
+                    if not used[j] and detections[j]['name'] == det1['name']:  
                         # Check if boxes overlap
                         if (merged_box['x1'] < detections[j]['box']['x2'] and 
                             merged_box['x2'] > detections[j]['box']['x1'] and
                             merged_box['y1'] < detections[j]['box']['y2'] and 
                             merged_box['y2'] > detections[j]['box']['y1']):
                             
-                            # Update merged_box to encompass both boxes
                             merged_box['x1'] = min(merged_box['x1'], detections[j]['box']['x1'])
                             merged_box['y1'] = min(merged_box['y1'], detections[j]['box']['y1'])
                             merged_box['x2'] = max(merged_box['x2'], detections[j]['box']['x2'])
                             merged_box['y2'] = max(merged_box['y2'], detections[j]['box']['y2'])
-                            used[j] = True  # Mark this detection as used
-                            merged = True  # Set flag to continue merging
+                            used[j] = True  
+                            merged = True  
 
-            # Add the fully merged bounding box to the final results
             final_detections.append({
                 'name': det1['name'],
                 'box': merged_box,
@@ -143,15 +136,13 @@ class DetectionProcessor:
         '''
         Processes detections and returns cleaned results.
         '''
-        # Separate detections into processed (fixed box size for target classes) and unprocessed
+      
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
-        
-        # Combine processed and unprocessed detections and merge them
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
         
-        # return {'detections': merged_detections}
-        return {'detections': self.detections}
+        return {'detections': merged_detections}
+        # return {'detections': combined_detections}
 
 class GeoSHPConverter:
     '''
@@ -212,16 +203,14 @@ class GeoSHPConverter:
             bottom_right = self.interpolate_to_gps(x2, y2)
             bottom_left = self.interpolate_to_gps(x1, y2)
 
-            # Define the polygon as a closed rectangle
+  
             shp_writer.poly([[
-                [top_left[1], top_left[0]],      # (lon, lat) for top-left
-                [top_right[1], top_right[0]],    # (lon, lat) for top-right
-                [bottom_right[1], bottom_right[0]],  # (lon, lat) for bottom-right
-                [bottom_left[1], bottom_left[0]],    # (lon, lat) for bottom-left
-                [top_left[1], top_left[0]]       # Closing the polygon back to top-left
+                [top_left[1], top_left[0]],     
+                [top_right[1], top_right[0]],    
+                [bottom_right[1], bottom_right[0]], 
+                [bottom_left[1], bottom_left[0]],    
+                [top_left[1], top_left[0]]       
             ]])
-
-            # Record the name and confidence for each bounding box
             shp_writer.record(detection['name'], detection['confidence'])
 
         shp_writer.close()
