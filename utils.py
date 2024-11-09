@@ -17,10 +17,9 @@ class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def __init__(self, image_path, json_path, box_size, overlap_threshold, output_path, target_classes=['pt']) -> None:
-        self.target_classes = target_classes
+    def __init__(self, image_path, json_path, box_size, overlap_threshold, output_path) -> None:
         corners, gsd = self.read_corners(image_path)
-        Detection_obj = DetectionProcessor(json_path, gsd, box_size, overlap_threshold, target_classes)
+        Detection_obj = DetectionProcessor(json_path, gsd, box_size, overlap_threshold)
         clean_detection = Detection_obj.process_detections()
         geojson_obj = GeoSHPConverter(output_path, image_path, corners)
         geojson_obj.convert_to_shp(clean_detection)
@@ -49,7 +48,6 @@ class DetectionProcessor:
         self.gcd = gcd
         self.box_size = box_size
         self.overlap_threshold = overlap_threshold
-        self.target_classes = target_classes
         self.detections = self.load_detections()
 
     def load_detections(self):
@@ -67,7 +65,7 @@ class DetectionProcessor:
         processed_detections = []
         unprocessed_detections = []
         for det in detections:
-            if det['name'] in self.target_classes:
+            if '_pt' in det['name']:
                 box = np.array(list(det['box'].values()))
                 half_size = (self.box_size / 100) / self.gcd  
                 center = (box[:2] + box[2:]) / 2
@@ -187,30 +185,28 @@ class GeoSHPConverter:
 
     def convert_to_shp(self, data):
         '''
-        Converts detection data to a shapefile with bounding box polygons.
+        Converts detection data to a shapefile with points and lines.
         '''
-        shp_writer = shapefile.Writer(self.output_path, shapefile.POLYGON)
-        shp_writer.field('Name', 'C')
-        shp_writer.field('Confidence', 'F', decimal=2)
+        w = shapefile.Writer(self.output_path, shapeType=shapefile.NULL)  
+        w.field('Name', 'C')
+        w.field('Confidence', 'F', decimal=2)
+        w.field('Type', 'C')
 
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
             x2, y2 = detection['box']['x2'], detection['box']['y2']
-            
-            # Convert each corner of the bounding box to GPS coordinates
-            top_left = self.interpolate_to_gps(x1, y1)
-            top_right = self.interpolate_to_gps(x2, y1)
-            bottom_right = self.interpolate_to_gps(x2, y2)
-            bottom_left = self.interpolate_to_gps(x1, y2)
+            center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
+            center_gps = self.interpolate_to_gps(center_x, center_y)
 
-  
-            shp_writer.poly([[
-                [top_left[1], top_left[0]],     
-                [top_right[1], top_right[0]],    
-                [bottom_right[1], bottom_right[0]], 
-                [bottom_left[1], bottom_left[0]],    
-                [top_left[1], top_left[0]]       
-            ]])
-            shp_writer.record(detection['name'], detection['confidence'])
+            if '_pt' in detection['name']:
+                w.shapeType = shapefile.POINT
+                w.point(center_gps[1], center_gps[0])
+                w.record(detection['name'], detection['confidence'], 'Point')
 
-        shp_writer.close()
+            elif '_gp' in detection['name']:
+                w.shapeType = shapefile.POLYLINE
+                end_gps = self.interpolate_to_gps(x2, y2)
+                w.line([[[center_gps[1], center_gps[0]], [end_gps[1], end_gps[0]]]])
+                w.record(detection['name'], detection['confidence'], 'Line')
+
+        w.close()

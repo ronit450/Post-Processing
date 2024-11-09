@@ -36,11 +36,11 @@ class Cleaner:
                 print(f"Processed {file} in {time_taken:.2f} seconds")
 
 if __name__ == "__main__":
-    box_size_cm = 8  # Size of potato in cm
+    box_size_cm = 3  # Size of potato in cm
     overlap_threshold = 0.5  # Overlap threshold for merging
 
     processor = Cleaner(
-        r"C:\Users\User\Downloads\Aimen-test",  # Input folder path
+        r"C:\Users\User\Downloads\doobara-test",  # Input folder path
         r"C:\Users\User\Downloads\Aiman-file-results-test",  # Output folder path
         box_size_cm,
         overlap_threshold
