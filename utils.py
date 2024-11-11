@@ -17,9 +17,9 @@ class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def __init__(self, image_path, json_path, box_size, overlap_threshold, output_path) -> None:
+    def __init__(self, image_path, json_path, box_size, output_path) -> None:
         corners, gsd = self.read_corners(image_path)
-        Detection_obj = DetectionProcessor(json_path, gsd, box_size, overlap_threshold)
+        Detection_obj = DetectionProcessor(json_path, gsd, box_size)
         clean_detection = Detection_obj.process_detections()
         geojson_obj = GeoSHPConverter(output_path, image_path, corners)
         geojson_obj.convert_to_shp(clean_detection)
@@ -43,11 +43,10 @@ class DetectionProcessor:
     '''
     Processes and filters detections based on specific criteria.
     '''
-    def __init__(self, input_path, gcd, box_size, overlap_threshold, target_classes):
+    def __init__(self, input_path, gcd, box_size):
         self.input_path = input_path
         self.gcd = gcd
         self.box_size = box_size
-        self.overlap_threshold = overlap_threshold
         self.detections = self.load_detections()
 
     def load_detections(self):
@@ -65,7 +64,7 @@ class DetectionProcessor:
         processed_detections = []
         unprocessed_detections = []
         for det in detections:
-            if '_pt' in det['name']:
+            if 'pt' in det['name']:
                 box = np.array(list(det['box'].values()))
                 half_size = (self.box_size / 100) / self.gcd  
                 center = (box[:2] + box[2:]) / 2
@@ -138,6 +137,7 @@ class DetectionProcessor:
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
+        # print(f"merged_det = {merged_detections}")
         
         return {'detections': merged_detections}
         # return {'detections': combined_detections}
@@ -185,9 +185,9 @@ class GeoSHPConverter:
 
     def convert_to_shp(self, data):
         '''
-        Converts detection data to a shapefile with points and lines.
+        Converts detection data to shapefiles with points and lines.
         '''
-        w = shapefile.Writer(self.output_path, shapeType=shapefile.NULL)  
+        w = shapefile.Writer(self.output_path, shapeType=shapefile.NULL)
         w.field('Name', 'C')
         w.field('Confidence', 'F', decimal=2)
         w.field('Type', 'C')
@@ -195,18 +195,22 @@ class GeoSHPConverter:
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
             x2, y2 = detection['box']['x2'], detection['box']['y2']
-            center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
-            center_gps = self.interpolate_to_gps(center_x, center_y)
+            
+            center_y = (y1 + y2) / 2
 
-            if '_pt' in detection['name']:
+            if 'pt' in detection['name']:
+                center_x = (x1 + x2) / 2
+                center_gps = self.interpolate_to_gps(center_x, center_y)
                 w.shapeType = shapefile.POINT
                 w.point(center_gps[1], center_gps[0])
                 w.record(detection['name'], detection['confidence'], 'Point')
 
-            elif '_gp' in detection['name']:
+            elif 'gp' in detection['name']:
                 w.shapeType = shapefile.POLYLINE
-                end_gps = self.interpolate_to_gps(x2, y2)
-                w.line([[[center_gps[1], center_gps[0]], [end_gps[1], end_gps[0]]]])
+                
+                left_gps = self.interpolate_to_gps(x1, center_y)
+                right_gps = self.interpolate_to_gps(x2, center_y)
+                w.line([[[left_gps[1], left_gps[0]], [right_gps[1], right_gps[0]]]])
                 w.record(detection['name'], detection['confidence'], 'Line')
 
         w.close()
