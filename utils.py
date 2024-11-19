@@ -11,6 +11,7 @@ from collections import defaultdict
 from rtree import index
 import numpy as np
 from shapely.geometry import box
+from pyproj import CRS
 
 
 class PostProcess:
@@ -18,26 +19,25 @@ class PostProcess:
     The post process will handle detection conversion and output generation.
     '''
     def __init__(self, image_path, json_path, box_size, output_path) -> None:
-        corners, gsd = self.read_corners(image_path)
+        corners, gsd,  image_width_aiman, image_height_aiman= self.read_corners_and_gsd_from_exif(image_path)
+        self.new_height_aiman = image_height_aiman
+        self.new_width_aiman = image_width_aiman
         Detection_obj = DetectionProcessor(json_path, gsd, box_size)
         clean_detection = Detection_obj.process_detections()
-        geojson_obj = GeoSHPConverter(output_path, image_path, corners)
+        geojson_obj = GeoSHPConverter(output_path, image_path, corners, self.new_height_aiman, self.new_width_aiman)
         geojson_obj.convert_to_shp(clean_detection)
 
-    def read_corners(self, image_path):
-        '''
-        Reads the corner coordinates and ground sample distance (GSD) from image metadata.
-        '''
+    def read_corners_and_gsd_from_exif(self, image_path):
         try:
             exif_dict = piexif.load(image_path)
             user_comment = exif_dict["Exif"].get(piexif.ExifIFD.UserComment)
             if user_comment and user_comment.startswith(b"XMP\x00"):
                 json_data = user_comment[4:].decode('utf-8')
                 metadata = json.loads(json_data)
-                return metadata.get("corner_coordinates"), metadata.get("gsd")
+                return metadata.get("Corner_Coordinates"), metadata.get("GSD"), metadata.get("ImageWidth_Meter"), metadata.get("ImageHeigth_Meter")
         except Exception as e:
             print(f"Error reading metadata from {image_path}: {str(e)}")
-        return None, None
+        return None, None, None, None
 
 class DetectionProcessor:
     '''
@@ -63,9 +63,10 @@ class DetectionProcessor:
         '''
         processed_detections = []
         unprocessed_detections = []
+       
         for det in detections:
             if 'pt' in det['name']:
-                box = np.array(list(det['box'].values()))
+                box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
                 half_size = (self.box_size / 100) / self.gcd  
                 center = (box[:2] + box[2:]) / 2
     
@@ -137,7 +138,7 @@ class DetectionProcessor:
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
-        # print(f"merged_det = {merged_detections}")
+        # print(f"merged_det = {merged_detections}") ab chalae
         
         return {'detections': merged_detections}
         # return {'detections': combined_detections}
@@ -146,8 +147,10 @@ class GeoSHPConverter:
     '''
     Converts detection data to shapefiles with geospatial coordinates.
     '''
-    def __init__(self, output_path, image_path, corners):
+    def __init__(self, output_path, image_path, corners, image_height_a, image_width_a):
         self.output_path = output_path
+        self.image_height_aiman = image_height_a
+        self.image_weight_aiman = image_width_a
         self.top_left = (corners[1][1], corners[1][0])
         self.bottom_right = (corners[3][1], corners[3][0])
         with Image.open(image_path) as img:
@@ -191,6 +194,10 @@ class GeoSHPConverter:
         w.field('Name', 'C')
         w.field('Confidence', 'F', decimal=2)
         w.field('Type', 'C')
+        w.field('ImgWidth', 'F', decimal=3)
+        w.field('ImgHeight', 'F', decimal=3)
+        w.field('Corners', 'C')
+        corners_str = ";".join([f"{lat},{lon}" for lon, lat in self.gps_corners.values()])
 
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
@@ -203,7 +210,7 @@ class GeoSHPConverter:
                 center_gps = self.interpolate_to_gps(center_x, center_y)
                 w.shapeType = shapefile.POINT
                 w.point(center_gps[1], center_gps[0])
-                w.record(detection['name'], detection['confidence'], 'Point')
+                w.record(detection['name'], detection['confidence'], 'Point', self.image_weight_aiman, self.image_height_aiman, corners_str)
 
             elif 'gp' in detection['name']:
                 w.shapeType = shapefile.POLYLINE
@@ -211,6 +218,28 @@ class GeoSHPConverter:
                 left_gps = self.interpolate_to_gps(x1, center_y)
                 right_gps = self.interpolate_to_gps(x2, center_y)
                 w.line([[[left_gps[1], left_gps[0]], [right_gps[1], right_gps[0]]]])
-                w.record(detection['name'], detection['confidence'], 'Line')
+                w.record(detection['name'], detection['confidence'], 'Line',    self.image_weight_aiman, self.image_height_aiman, corners_str)
+       
 
         w.close()
+
+        self.write_projection_file()
+
+
+
+    
+    def write_projection_file(self):
+        '''
+        Writes the projection file (.prj) for the shapefile in WKT1 format.
+        '''
+        from pyproj import CRS
+
+        # Get the CRS for WGS 84
+        crs = CRS.from_epsg(4326)
+
+        # Convert CRS to WKT1 format (use `WKT1_ESRI` for compatibility with .prj files)
+        wgs84_wkt = crs.to_wkt("WKT1_GDAL")
+        
+        # Write the WKT to the .prj file
+        with open(f"{self.output_path}.prj", "w") as prj_file:
+            prj_file.write(wgs84_wkt)
