@@ -4,6 +4,7 @@ import time
 import concurrent.futures
 import multiprocessing
 from utils import *
+import traceback
 
 class Cleaner:
     def __init__(self, img_folder_path, json_folder_path, output_folder, box_size) -> None:
@@ -13,7 +14,6 @@ class Cleaner:
         os.makedirs(self.output_folder, exist_ok=True)
         self.box_size = box_size
         self.max_workers = max(1, multiprocessing.cpu_count() - 4)
-
     def process_file(self, file):
         """
         Processes a single file, converting it to a shapefile.
@@ -22,10 +22,8 @@ class Cleaner:
             if file.endswith('.JPG') or file.endswith('.tif'):
                 start_time = time.time()
                 image_file = os.path.join(self.img_folder_path, file)
-                json_file = os.path.splitext(file)[0] + '.json'
-                json_path = os.path.join(self.json_folder_path, json_file)
-                shp_output_base = os.path.join(self.output_folder, os.path.splitext(file)[0])
-                print(f"Processing {json_file}")
+                json_path = os.path.join(self.json_folder_path, file.replace('.JPG', '.json'))
+                shp_output_base = os.path.join(self.output_folder, f"{os.path.splitext(file)[0]}.geojson")
                 PostProcess(
                     image_path=image_file,
                     json_path=json_path,
@@ -37,28 +35,24 @@ class Cleaner:
                 print(f"Processed {file} in {time_taken:.2f} seconds")
         except Exception as e:
             print(f"Error processing {file}: {str(e)}")
-
+            print(traceback.format_exc())
     def process(self):
         """
         Processes all files in the specified folder using a ThreadPoolExecutor.
         """
         files = [f for f in os.listdir(self.img_folder_path) if f.endswith('.JPG') or f.endswith('.tif')]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(self.process_file, file) for file in files]
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"Error in thread: {str(e)}")
+        for file in files:
+            print(file)
+            self.process_file(file)
+
 
 if __name__ == "__main__":
-    box_size_cm = 5 
-
+    box_size_cm = 4
     processor = Cleaner(
-        r"E:\blackgold\nutfarm2\DCIM\output_test",  # Input folder path
-        r"D:\Aiman\25-10-2024_complete_pipeline_test\yolo_soybean\code\jsons",  # JSON folder path
-        r"E:\blackgold\nutfarm2\DCIM\output_geojsons",  # Output folder path
+
+        r"C:\Users\User\Downloads\pp\imahes", 
+        r"C:\Users\User\Downloads\pp\json", 
+        r"C:\Users\User\Downloads\pp\out",  # Output folder path
         box_size_cm,
     )
-
     processor.process()

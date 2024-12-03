@@ -4,7 +4,6 @@ from PIL import Image
 import piexif
 import numpy as np
 from collections import defaultdict
-import shapefile
 from shapely.geometry import Point, LineString
 from rtree import index
 from collections import defaultdict
@@ -12,6 +11,9 @@ from rtree import index
 import numpy as np
 from shapely.geometry import box
 from pyproj import CRS
+import math
+from decimal import Decimal, getcontext
+
 
 
 class PostProcess:
@@ -24,9 +26,9 @@ class PostProcess:
         self.new_width_aiman = image_width_aiman
         Detection_obj = DetectionProcessor(json_path, gsd, box_size)
         clean_detection = Detection_obj.process_detections()
-        geojson_obj = GeoSHPConverter(output_path, image_path, corners, self.new_height_aiman, self.new_width_aiman)
-        geojson_obj.convert_to_shp(clean_detection)
-
+        geojson_obj = GeoJSONConverter(output_path, image_path, corners, self.new_height_aiman, self.new_width_aiman)
+        geojson_obj.convert_to_geojson(clean_detection)
+        
     def read_corners_and_gsd_from_exif(self, image_path):
         try:
             exif_dict = piexif.load(image_path)
@@ -38,7 +40,6 @@ class PostProcess:
         except Exception as e:
             print(f"Error reading metadata from {image_path}: {str(e)}")
         return None, None, None, None
-
 class DetectionProcessor:
     '''
     Processes and filters detections based on specific criteria.
@@ -48,7 +49,6 @@ class DetectionProcessor:
         self.gcd = gcd
         self.box_size = box_size
         self.detections = self.load_detections()
-
     def load_detections(self):
         '''
         Loads detections from a JSON file.
@@ -56,20 +56,17 @@ class DetectionProcessor:
         with open(self.input_path) as f:
             data = json.load(f)
         return data['detections']
-
     def calculate_center_and_fixed_bbox(self, detections):
         '''
         Calculates center points and fixes bounding box size for each detection.
         '''
         processed_detections = []
         unprocessed_detections = []
-       
         for det in detections:
             if 'pt' in det['name']:
                 box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
-                half_size = (self.box_size / 100) / self.gcd  
+                half_size = (self.box_size / 100) / self.gcd
                 center = (box[:2] + box[2:]) / 2
-    
                 new_box = np.hstack([center - half_size, center + half_size])
                 det['box'] = {
                     'x1': new_box[0],
@@ -81,78 +78,68 @@ class DetectionProcessor:
             else:
                 unprocessed_detections.append(det)
         return processed_detections, unprocessed_detections
-    
-    
     def detect_and_merge(self, detections):
         '''
         Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
         '''
         final_detections = []
-        rtree_idx = index.Index() 
+        rtree_idx = index.Index()
         for i, det in enumerate(detections):
             bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
             rtree_idx.insert(i, bbox)
-
         used = [False] * len(detections)
-
         for i, det1 in enumerate(detections):
             if used[i]:
                 continue
             merged_box = det1['box']
             used[i] = True
             merged = True
-
             while merged:
                 merged = False
                 overlapping_idxs = list(rtree_idx.intersection((merged_box['x1'], merged_box['y1'], merged_box['x2'], merged_box['y2'])))
-
                 for j in overlapping_idxs:
-                    if not used[j] and detections[j]['name'] == det1['name']:  
+                    if not used[j] and detections[j]['name'] == det1['name']:
                         # Check if boxes overlap
-                        if (merged_box['x1'] < detections[j]['box']['x2'] and 
+                        if (merged_box['x1'] < detections[j]['box']['x2'] and
                             merged_box['x2'] > detections[j]['box']['x1'] and
-                            merged_box['y1'] < detections[j]['box']['y2'] and 
+                            merged_box['y1'] < detections[j]['box']['y2'] and
                             merged_box['y2'] > detections[j]['box']['y1']):
-                            
                             merged_box['x1'] = min(merged_box['x1'], detections[j]['box']['x1'])
                             merged_box['y1'] = min(merged_box['y1'], detections[j]['box']['y1'])
                             merged_box['x2'] = max(merged_box['x2'], detections[j]['box']['x2'])
                             merged_box['y2'] = max(merged_box['y2'], detections[j]['box']['y2'])
-                            used[j] = True  
-                            merged = True  
-
+                            used[j] = True
+                            merged = True
             final_detections.append({
                 'name': det1['name'],
                 'box': merged_box,
                 'confidence': det1.get('confidence', 1.0)
             })
-
         return final_detections
-
-
     def process_detections(self):
         '''
         Processes detections and returns cleaned results.
         '''
-      
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
-        # print(f"merged_det = {merged_detections}") ab chalae
-        
+    
+        with open(r'C:\Users\User\Downloads\pp\new.json', 'w') as outfile:
+            json.dump({'detections': merged_detections}, outfile, indent=4)
         return {'detections': merged_detections}
-        # return {'detections': combined_detections}
+    
 
-class GeoSHPConverter:
+
+
+class GeoJSONConverter:
     '''
-    Converts detection data to shapefiles with geospatial coordinates.
+    Converts detection data to GeoJSON with geospatial coordinates.
     '''
     def __init__(self, output_path, image_path, corners, image_height_a, image_width_a):
         self.output_path = output_path
         self.image_height_aiman = image_height_a
         self.image_weight_aiman = image_width_a
-        self.top_left = (corners[1][1], corners[1][0])
-        self.bottom_right = (corners[3][1], corners[3][0])
+        getcontext().prec = 18
         with Image.open(image_path) as img:
             self.image_width, self.image_height = img.size
         self.gps_corners = {
@@ -161,85 +148,88 @@ class GeoSHPConverter:
             "bottom_right": corners[2],
             "bottom_left": corners[3]
         }
-
+    
     def interpolate_to_gps(self, x, y):
         '''
-        Interpolates image pixel coordinates to GPS coordinates.
+        Interpolates image pixel coordinates to GPS coordinates with high precision.
+        Returns Decimal values for maximum precision.
         '''
-        norm_x = x / self.image_width
-        norm_y = y / self.image_height
-
-        # Bilinear interpolation for longitude and latitude
+        norm_x = Decimal(x) / Decimal(self.image_width)
+        norm_y = Decimal(y) / Decimal(self.image_height)
+        
         lon = (
-            self.gps_corners["top_left"][0] * (1 - norm_x) * (1 - norm_y) +
-            self.gps_corners["top_right"][0] * norm_x * (1 - norm_y) +
-            self.gps_corners["bottom_right"][0] * norm_x * norm_y +
-            self.gps_corners["bottom_left"][0] * (1 - norm_x) * norm_y
+            Decimal(self.gps_corners["top_left"][0]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(self.gps_corners["top_right"][0]) * norm_x * (1 - norm_y) +
+            Decimal(self.gps_corners["bottom_right"][0]) * norm_x * norm_y +
+            Decimal(self.gps_corners["bottom_left"][0]) * (1 - norm_x) * norm_y
         )
-
+        
         lat = (
-            self.gps_corners["top_left"][1] * (1 - norm_x) * (1 - norm_y) +
-            self.gps_corners["top_right"][1] * norm_x * (1 - norm_y) +
-            self.gps_corners["bottom_right"][1] * norm_x * norm_y +
-            self.gps_corners["bottom_left"][1] * (1 - norm_x) * norm_y
+            Decimal(self.gps_corners["top_left"][1]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(self.gps_corners["top_right"][1]) * norm_x * (1 - norm_y) +
+            Decimal(self.gps_corners["bottom_right"][1]) * norm_x * norm_y +
+            Decimal(self.gps_corners["bottom_left"][1]) * (1 - norm_x) * norm_y
         )
+        
+        return f"{lat:.16f}", f"{lon:.16f}"
+    
 
-        return lat, lon
-
-    def convert_to_shp(self, data):
+    def convert_to_geojson(self, data):
         '''
-        Converts detection data to shapefiles with points and lines.
+        Converts detection data to GeoJSON with 16 decimal places precision.
         '''
-        w = shapefile.Writer(self.output_path, shapeType=shapefile.NULL)
-        w.field('Name', 'C')
-        w.field('Confidence', 'F', decimal=2)
-        w.field('Type', 'C')
-        w.field('ImgWidth', 'F', decimal=3)
-        w.field('ImgHeight', 'F', decimal=3)
-        w.field('Corners', 'C')
-        corners_str = ";".join([f"{lat},{lon}" for lon, lat in self.gps_corners.values()])
-
+        features = []
+        count = 0
+        
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
             x2, y2 = detection['box']['x2'], detection['box']['y2']
-            
             center_y = (y1 + y2) / 2
-
+            
             if 'pt' in detection['name']:
                 center_x = (x1 + x2) / 2
                 center_gps = self.interpolate_to_gps(center_x, center_y)
-                w.shapeType = shapefile.POINT
-                w.point(center_gps[1], center_gps[0])
-                w.record(detection['name'], detection['confidence'], 'Point', self.image_weight_aiman, self.image_height_aiman, corners_str)
-
+                feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [float(center_gps[1]), float(center_gps[0])]  
+                    },
+                    "properties": {
+                        "name": detection['name'],
+                        "confidence": detection['confidence'],
+                        "type": "Point"
+                    }
+                }
+                features.append(feature)
+                count += 1
             elif 'gp' in detection['name']:
-                w.shapeType = shapefile.POLYLINE
-                
                 left_gps = self.interpolate_to_gps(x1, center_y)
                 right_gps = self.interpolate_to_gps(x2, center_y)
-                w.line([[[left_gps[1], left_gps[0]], [right_gps[1], right_gps[0]]]])
-                w.record(detection['name'], detection['confidence'], 'Line',    self.image_weight_aiman, self.image_height_aiman, corners_str)
-       
+                feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[float(left_gps[1]), float(left_gps[0])], [float(right_gps[1]), float(right_gps[0])]]
+                    },
+                    "properties": {
+                        "name": detection['name'],
+                        "confidence": detection['confidence'],
+                        "type": "Line"
+                    }
+                }
+                features.append(feature)
 
-        w.close()
-
-        self.write_projection_file()
-
-
-
-    
-    def write_projection_file(self):
-        '''
-        Writes the projection file (.prj) for the shapefile in WKT1 format.
-        '''
-        from pyproj import CRS
-
-        # Get the CRS for WGS 84
-        crs = CRS.from_epsg(4326)
-
-        # Convert CRS to WKT1 format (use `WKT1_ESRI` for compatibility with .prj files)
-        wgs84_wkt = crs.to_wkt("WKT1_GDAL")
+        area_in_sq_m = round(self.image_width * self.image_height, 3)
+        geojson_data = {
+            "type": "FeatureCollection",
+            "properties": {
+                "Area": area_in_sq_m,
+                "Per Acre Production": count / (area_in_sq_m / 4046.85642),
+            },
+            "features": features
+        }
         
-        # Write the WKT to the .prj file
-        with open(f"{self.output_path}.prj", "w") as prj_file:
-            prj_file.write(wgs84_wkt)
+        with open(self.output_path, 'w') as geojson_file:
+            json.dump(geojson_data, geojson_file, indent=2)
+
