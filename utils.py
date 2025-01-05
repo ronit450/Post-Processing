@@ -20,14 +20,13 @@ class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def __init__(self, image_path, json_path, box_size, output_path) -> None:
+    def main(self, image_path, json_path, box_size, output_path) -> None:
         corners, gsd,  image_width_aiman, image_height_aiman= self.read_corners_and_gsd_from_exif(image_path)
-        self.new_height_aiman = image_height_aiman
-        self.new_width_aiman = image_width_aiman
         Detection_obj = DetectionProcessor(json_path, gsd, box_size)
         clean_detection = Detection_obj.process_detections()
-        geojson_obj = GeoJSONConverter(output_path, image_path, corners, self.new_height_aiman, self.new_width_aiman)
+        geojson_obj = GeoJSONConverter(output_path, image_path, corners, image_height_aiman, image_width_aiman)
         geojson_obj.convert_to_geojson(clean_detection)
+        return clean_detection, gsd
         
     def read_corners_and_gsd_from_exif(self, image_path):
         try:
@@ -40,6 +39,10 @@ class PostProcess:
         except Exception as e:
             print(f"Error reading metadata from {image_path}: {str(e)}")
         return None, None, None, None
+    
+    
+   
+        
 class DetectionProcessor:
     '''
     Processes and filters detections based on specific criteria.
