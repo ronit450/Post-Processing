@@ -13,6 +13,9 @@ from shapely.geometry import box
 from pyproj import CRS
 import math
 from decimal import Decimal, getcontext
+import os 
+import pandas as pd
+import ast
 
 
 
@@ -20,24 +23,32 @@ class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def main(self, image_path, json_path, box_size, output_path) -> None:
-        corners, gsd,  image_width_aiman, image_height_aiman= self.read_corners_and_gsd_from_exif(image_path)
-        Detection_obj = DetectionProcessor(json_path, gsd, box_size)
-        clean_detection = Detection_obj.process_detections()
-        geojson_obj = GeoJSONConverter(output_path, image_path, corners, image_height_aiman, image_width_aiman)
-        geojson_obj.convert_to_geojson(clean_detection)
-        return clean_detection, gsd
+    def main(self, json_path, box_size, output_path, data) -> None:
         
-    def read_corners_and_gsd_from_exif(self, image_path):
         try:
-            exif_dict = piexif.load(image_path)
-            user_comment = exif_dict["Exif"].get(piexif.ExifIFD.UserComment)
-            if user_comment and user_comment.startswith(b"XMP\x00"):
-                json_data = user_comment[4:].decode('utf-8')
-                metadata = json.loads(json_data)
-                return metadata.get("Corner_Coordinates"), metadata.get("GSD"), metadata.get("ImageWidth_Meter"), metadata.get("ImageHeigth_Meter")
+            corners, gsd, width, height  = self.read_corners_and_gsd_csv(data, json_path)
+            Detection_obj = DetectionProcessor(json_path, gsd, box_size)
+            clean_detection = Detection_obj.process_detections()
+            geojson_obj = GeoJSONConverter(output_path, corners, width, height)
+            geojson_obj.convert_to_geojson(clean_detection)
+            return clean_detection, gsd
         except Exception as e:
-            print(f"Error reading metadata from {image_path}: {str(e)}")
+            print(f"Error occured in {json_path}: {str(e)}")
+        
+    def read_corners_and_gsd_csv(self, data, json_path):
+        try:
+            image_name = os.path.basename(json_path)
+            image_name = image_name.replace('.json', '.JPG')
+            row = data[data['image_name'] == image_name]
+            if not row.empty:
+                coordinates = (row.iloc[0]['corners'])
+                coordinates = ast.literal_eval(coordinates)
+                gsd = row.iloc[0]['gsd']
+                width = int(row.iloc[0]['image_width'])
+                height = int(row.iloc[0]['image_height'])
+                return coordinates, gsd, width, height
+        except Exception as e:
+            print(f"Error reading metadata from {json_path}: {str(e)}")
         return None, None, None, None
     
     
@@ -138,13 +149,11 @@ class GeoJSONConverter:
     '''
     Converts detection data to GeoJSON with geospatial coordinates.
     '''
-    def __init__(self, output_path, image_path, corners, image_height_a, image_width_a):
+    def __init__(self, output_path, corners, image_height, image_width):
         self.output_path = output_path
-        self.image_height_aiman = image_height_a
-        self.image_weight_aiman = image_width_a
+        self.image_height = image_height
+        self.image_width = image_width
         getcontext().prec = 18
-        with Image.open(image_path) as img:
-            self.image_width, self.image_height = img.size
         self.gps_corners = {
             "top_left": corners[0],
             "top_right": corners[1],
