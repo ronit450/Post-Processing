@@ -138,8 +138,8 @@ class DetectionProcessor:
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
     
-        with open(r'C:\Users\User\Downloads\pp\new.json', 'w') as outfile:
-            json.dump({'detections': merged_detections}, outfile, indent=4)
+        # with open(r'C:\Users\User\Downloads\pp\new.json', 'w') as outfile:
+        #     json.dump({'detections': merged_detections}, outfile, indent=4)
         return {'detections': merged_detections}
     
 

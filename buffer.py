@@ -9,10 +9,9 @@ import pandas as pd
 from canopy import * 
 
 class Cleaner:
-    def __init__(self, json_folder_path, detect_output_folder, box_size, max_reference_area, csv_path) -> None:
+    def __init__(self, json_folder_path, detect_output_folder, box_size, csv_path) -> None:
         self.json_folder_path = json_folder_path
         self.detect_out = detect_output_folder
-        self.max_reference_area = max_reference_area
         self.box_size = box_size
         self.data = pd.read_csv(csv_path)
         self.post_obj = PostProcess()
@@ -51,8 +50,6 @@ class Cleaner:
 
 if __name__ == "__main__":
     box_size_cm = 5
-    max_reference_area  = 0.12 #This is in meters
-    
     json_folder = r"C:\Users\User\Downloads\test_json"
     post_detection_out =  r"C:\Users\User\Downloads\test_json_result"
     csv_path = r"C:\Users\User\Downloads\image_details (2).csv"
@@ -63,7 +60,6 @@ if __name__ == "__main__":
         json_folder, 
         post_detection_out, 
         box_size_cm,
-        max_reference_area, 
         csv_path
     )
     processor.process()
