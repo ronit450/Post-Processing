@@ -79,7 +79,7 @@ class DetectionProcessor:
         for det in detections:
             if 'pt' in det['name']:
                 box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
-                half_size = (self.box_size / 100) / self.gcd
+                half_size = (self.box_size) / self.gcd
                 center = (box[:2] + box[2:]) / 2
                 new_box = np.hstack([center - half_size, center + half_size])
                 det['box'] = {

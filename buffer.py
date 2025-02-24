@@ -15,6 +15,7 @@ class Cleaner:
         self.box_size = box_size
         self.data = pd.read_csv(csv_path)
         self.post_obj = PostProcess()
+        self.max_workers = max(1, multiprocessing.cpu_count() - 4)
         
         
     def process_file(self, file):
@@ -44,12 +45,17 @@ class Cleaner:
         Processes all files in the specified folder using a ThreadPoolExecutor.
         """
         files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.json')]
-        for file in files:
-            self.process_file(file)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = [executor.submit(self.process_file, file) for file in files]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Error in thread: {str(e)}")
 
 
 if __name__ == "__main__":
-    box_size_cm = 5
+    box_size = 0.05 # this is in meters
     json_folder = r"C:\Users\User\Downloads\test_json"
     post_detection_out =  r"C:\Users\User\Downloads\test_json_result"
     csv_path = r"C:\Users\User\Downloads\image_details (2).csv"
@@ -59,7 +65,7 @@ if __name__ == "__main__":
     processor = Cleaner(
         json_folder, 
         post_detection_out, 
-        box_size_cm,
+        box_size,
         csv_path
     )
     processor.process()
