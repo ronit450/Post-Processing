@@ -149,7 +149,7 @@ class GeoJSONConverter:
     '''
     Converts detection data to GeoJSON with geospatial coordinates.
     '''
-    def __init__(self, output_path, corners, image_height, image_width):
+    def __init__(self, output_path, corners, image_width, image_height):
         self.output_path = output_path
         self.image_height = image_height
         self.image_width = image_width
