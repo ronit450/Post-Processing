@@ -16,29 +16,33 @@ from decimal import Decimal, getcontext
 import os 
 import pandas as pd
 import ast
+import traceback
+import re
 
-
+SQUARE_METER = 4046.856
 
 class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def main(self, json_path, box_size, output_path, data) -> None:
+    def main(self, json_path, box_size, output_path, data, field_json) -> None:
         
         try:
             corners, gsd, width, height  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
             clean_detection = Detection_obj.process_detections()
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
-            geojson_obj.convert_to_geojson(clean_detection)
-            return clean_detection, gsd
+            count = geojson_obj.convert_to_geojson(clean_detection)
+            return gsd, width, height, count
         except Exception as e:
+            traceback.print_exc()
             print(f"Error occured in {json_path}: {str(e)}")
+            
         
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.JPG')
+            image_name = os.path.splitext(image_name)[0]
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -51,9 +55,7 @@ class PostProcess:
             print(f"Error reading metadata from {json_path}: {str(e)}")
         return None, None, None, None
     
-    
-   
-        
+      
 class DetectionProcessor:
     '''
     Processes and filters detections based on specific criteria.
@@ -143,8 +145,6 @@ class DetectionProcessor:
         return {'detections': merged_detections}
     
 
-
-
 class GeoJSONConverter:
     '''
     Converts detection data to GeoJSON with geospatial coordinates.
@@ -233,7 +233,7 @@ class GeoJSONConverter:
                 features.append(feature)
 
         area_in_sq_m = round(self.image_width * self.image_height, 3)
-        geojson_data = {
+        self.field_json = {
             "type": "FeatureCollection",
             "properties": {
                 "Area": area_in_sq_m,
@@ -243,5 +243,100 @@ class GeoJSONConverter:
         }
         
         with open(self.output_path, 'w') as geojson_file:
-            json.dump(geojson_data, geojson_file, indent=2)
+            json.dump(self.field_json, geojson_file, indent=2)
+        
+        return count 
 
+
+class Analysis:
+    def __init__(self, field_json, gsd, image_width, image_height, label, count):
+        # self.field_json = field_json
+        self.image_width = image_width
+        self.image_height = image_height
+        self.gsd = gsd
+        self.label = label
+        self.count = count
+        
+        with open(field_json, 'r') as data:
+            self.field_json = json.load(data)
+        
+
+    def one_snap_analysis(self):
+        type_label = 'plant_count'
+        label = os.path.splitext(os.path.basename(self.label))[0]
+        total_crop_area_sq = round((self.image_width * self.gsd) * (self.image_height * self.gsd), 2)
+        target_population = round(self.field_json.get('target_stand_per_acre') / SQUARE_METER)
+        emerged_population = self.count / total_crop_area_sq  # math.ceil if needed
+        emergence_rate = emerged_population / target_population * 100
+        yield_loss_plants = target_population - emerged_population
+        yield_loss_percentage = yield_loss_plants / target_population * 100
+    
+        color, plant_count = self.get_status_and_color(emergence_rate)
+        analysis_results = {
+            "type_label": type_label,
+            "label": label,
+            "total_crop_area_sq": total_crop_area_sq,
+            "target_population": target_population,
+            "emerged_population": emerged_population,
+            "emergence_rate": emergence_rate,
+            "yield_loss_plants": yield_loss_plants,
+            "yield_loss_percentage": yield_loss_percentage,
+            "color": color,
+            "plant_count": plant_count
+        }
+
+        return analysis_results 
+            
+    
+    def get_status_and_color(self,target_achieved):
+        if target_achieved > 90:
+            return "#006400", "Excellent"  # Dark Green
+        elif 70 <= target_achieved <= 90:
+            return "#008000", "Good"  # Green
+        elif 50 <= target_achieved < 70:
+            return "#FFFF00", "Average"  # Yellow
+        else:
+            return "#FF0000", "Poor"  # Red
+
+     
+    
+    def generate_field_analysis(self, sum_emerged_pop):
+        target_population = self.field_json.get('target_stand_per_acre', 1)
+        total_crop_area_acres = self.field_json['polygon']['size']
+        emerged_population = (sum(sum_emerged_pop) / len(sum_emerged_pop)) * 4046.856
+        emergence_rate = (emerged_population / target_population * 100) if target_population else 0
+        yield_loss_plants = target_population - emerged_population
+        yield_loss_percentage = (yield_loss_plants / target_population * 100) if target_population else 0
+        
+        color, plant_count = self.get_status_and_color(emergence_rate)
+
+        field_analysis_data = {
+            "label": "summary",
+            "temp_type": "plant_count",
+            "company": "",
+            "field_id": f"Field {self.field_json.get('id', 'Unknown')}",
+            "boundary_acres": total_crop_area_acres,
+            "crop_type": self.field_json.get('cropName', "Unknown"),
+            "farm": self.field_json.get('name', "Unknown"),
+            "plantation_date": self.field_json.get('seeding_date', "Unknown"),
+            "flight_scan_date": self.field_json.get('flight_scan_date', "Unknown"),
+            "total_crop_area_acres": total_crop_area_acres,
+            "target_population": target_population,
+            "emerged_population": emerged_population,
+            "emergence_rate": emergence_rate,
+            "yield_loss_plants": yield_loss_plants,
+            "yield_loss_percentage": yield_loss_percentage,
+            "color": color,
+            "plant_count": plant_count
+        }
+
+        return field_analysis_data
+
+        
+        
+        
+        
+        
+        
+        
+        
