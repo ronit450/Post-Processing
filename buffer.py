@@ -6,7 +6,7 @@ import multiprocessing
 from utils import *
 import traceback
 import pandas as pd
-from canopy import * 
+# from canopy import * 
 import math
 
 
@@ -23,7 +23,7 @@ class Cleaner:
         self.emerged_pop_count = []
         self.geojson_output = os.path.join(self.detect_out, 'geojsons')
         os.makedirs(self.detect_out, exist_ok=True)
-                    
+    
         
     def process_file(self, file):
         """
@@ -46,7 +46,7 @@ class Cleaner:
             self.analysis_obj = Analysis(self.field_json, gsd, width, height, json_path, count)
             analysis_dict = self.analysis_obj.one_snap_analysis()
             self.results.append(analysis_dict)
-            self.emerged_pop_count.append(analysis_dict['emerged_population'])
+            self.emerged_pop_count.append(analysis_dict['emerged_population']/analysis_dict['total_crop_area_sq'])
         except Exception as e:
             print(f"Error processing {file}: {str(e)}")
             print(traceback.format_exc())
@@ -55,15 +55,25 @@ class Cleaner:
         """
         Processes all files in the specified folder using a ThreadPoolExecutor.
         """
+        # files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.out')]
         files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.out')]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(self.process_file, file) for file in files]
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"Error in thread: {str(e)}")
         
+        for file in files:
+            print("Processing File", file)
+            self.process_file(file)  # Run sequentially instead of using threading
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        #     futures = [executor.submit(self.process_file, file) for file in files]
+        #     for future in concurrent.futures.as_completed(futures):
+        #         try:
+        #             future.result()
+        #         except Exception as e:
+        #             print(f"Error in thread: {str(e)}")
+        # # files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.json')]
+        # print("Files",files)
+        # for file in files:
+            
+            # self.process_file(file)  # Run sequentially instead of using threading
+        print("self.analysis_obj",self.analysis_obj)
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.json_csv_maker()
     
@@ -73,7 +83,7 @@ class Cleaner:
         os.makedirs(result_folder, exist_ok=True )
         final_json = []
         final_json.append(self.analysis_field_dict)
-        final_json.append(self.results)
+        final_json.extend(self.results)
         json_path = os.path.join(result_folder, 'analysis.json')
         csv_path = os.path.join(result_folder, 'final_analysis.csv')
         with open(json_path, "w", encoding="utf-8") as json_file:
@@ -81,10 +91,10 @@ class Cleaner:
         
         
         df = pd.DataFrame([{
-        "company": self.analysis_field_dict.get("company", ""),
+        "company": self.analysis_field_dict.get("farm", ""),
         "fieldId": self.analysis_field_dict.get("field_id", ""),
-        "boundary": f"{self.analysis_field_dict.get('boundary_acres', '')} Acres",  
-        "cropType": self.analysis_field_dict.get("crop_type", ""),
+        "boundary": f"{self.analysis_field_dict.get('boundary_acres', '')}",  
+        "cropType": self.analysis_field_dict.get("crop_type", "").upper(),
         "plantationDate": self.analysis_field_dict.get("plantation_date", ""),
         "flightScan": self.analysis_field_dict.get("flight_scan_date", ""),
         "seededArea": self.analysis_field_dict.get("total_crop_area_acres", ""),
@@ -107,10 +117,10 @@ class Cleaner:
 
 if __name__ == "__main__":
     box_size = 0.04 # this is in meters
-    json_folder = r"C:\Users\User\Downloads\Sir-Kaamla"
-    post_detection_out =  r"C:\Users\User\Downloads\test_json_result-new"
-    csv_path = r"C:\Users\User\Downloads\image_details (1).csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot.json"
+    json_folder ="/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/input"
+    post_detection_out =  "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/output"
+    csv_path = "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/image_details.csv"
+    field_json = "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/field_season_shot.json"
     
 
     

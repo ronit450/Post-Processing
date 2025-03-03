@@ -1,20 +1,20 @@
 import json
-import geojson
-from PIL import Image
-import piexif
+# import geojson
+# from PIL import Image
+# import piexif
 import numpy as np
-from collections import defaultdict
-from shapely.geometry import Point, LineString
-from rtree import index
-from collections import defaultdict
+# from collections import defaultdict
+# from shapely.geometry import Point, LineString
+# from rtree import index
+# from collections import defaultdict
 from rtree import index
 import numpy as np
-from shapely.geometry import box
+# from shapely.geometry import box
 from pyproj import CRS
 import math
 from decimal import Decimal, getcontext
 import os 
-import pandas as pd
+# import pandas as pd
 import ast
 import traceback
 import re
@@ -279,7 +279,7 @@ class Analysis:
             "target_population": round(target_population * total_crop_area_sq,0),
             "emerged_population": self.count,
             "emergence_rate": emergence_rate,
-            "yield_loss_plants": yield_loss_plants,
+            "yield_loss_plants": round(yield_loss_plants * total_crop_area_sq,0),
             "yield_loss_percentage": yield_loss_percentage,
             "color": color,
             "plant_count": plant_count
@@ -326,8 +326,8 @@ class Analysis:
             "total_emerged_plants": round(emerged_population * total_crop_area_acres,0) ,
             "total_target_plants": round(target_population * total_crop_area_acres,0),
             "emergence_rate": round(emergence_rate,2),
-            "yield_loss_plants": yield_loss_plants,
-            "yield_loss_percentage": yield_loss_percentage,
+            "yield_loss_plants": round(yield_loss_plants,0),
+            "yield_loss_percentage": round(yield_loss_percentage,2),
             "color": color,
             "plant_count": plant_count
         }
