@@ -25,12 +25,12 @@ class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def main(self, json_path, box_size, output_path, data, field_json) -> None:
+    def main(self, json_path, box_size, output_path, data, clean_json_path) -> None:
         
         try:
             corners, gsd, width, height  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
-            clean_detection = Detection_obj.process_detections()
+            clean_detection = Detection_obj.process_detections(clean_json_path)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
             return gsd, width, height, count
@@ -132,7 +132,7 @@ class DetectionProcessor:
                 'confidence': det1.get('confidence', 1.0)
             })
         return final_detections
-    def process_detections(self):
+    def process_detections(self, clean_json_path):
         '''
         Processes detections and returns cleaned results.
         '''
@@ -140,8 +140,8 @@ class DetectionProcessor:
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
     
-        # with open(r'C:\Users\User\Downloads\pp\new.json', 'w') as outfile:
-        #     json.dump({'detections': merged_detections}, outfile, indent=4)
+        with open(clean_json_path, 'w') as outfile:
+            json.dump({'detections': merged_detections}, outfile, indent=4)
         return {'detections': merged_detections}
     
 
