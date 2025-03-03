@@ -23,6 +23,8 @@ class Cleaner:
         self.emerged_pop_count = []
         self.geojson_output = os.path.join(self.detect_out, 'geojsons')
         os.makedirs(self.detect_out, exist_ok=True)
+        self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
+        os.makedirs(self.clean_detection_path, exist_ok=True)
                     
         
     def process_file(self, file):
@@ -32,13 +34,14 @@ class Cleaner:
         try:
             start_time = time.time()
             json_path = os.path.join(self.json_folder_path, file)
+            detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(file)[0]}.json")
             shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(file)[0]}.geojson")
             gsd, width, height, count = self.post_obj.main(
                 json_path=json_path,
                 box_size=self.box_size,
                 output_path=shp_output_base, 
-                data = self.data, 
-                field_json= self.field_json
+                data = self.data,
+                clean_json_path = detection_save_path
             )                   
             end_time = time.time()
             time_taken = end_time - start_time
