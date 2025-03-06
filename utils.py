@@ -28,9 +28,9 @@ class PostProcess:
     def main(self, json_path, box_size, output_path, data, clean_json_path) -> None:
         
         try:
-            corners, gsd, width, height  = self.read_corners_and_gsd_csv(data, json_path)
+            corners, gsd, width, height, image_name  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
-            clean_detection = Detection_obj.process_detections(clean_json_path)
+            clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
             return gsd, width, height, count
@@ -50,10 +50,10 @@ class PostProcess:
                 gsd = row.iloc[0]['gsd']
                 width = int(row.iloc[0]['image_width'])
                 height = int(row.iloc[0]['image_height'])
-                return coordinates, gsd, width, height
+                return coordinates, gsd, width, height , image_name
         except Exception as e:
             print(f"Error reading metadata from {json_path}: {str(e)}")
-        return None, None, None, None
+        return None, None, None, None, None
     
       
 class DetectionProcessor:
@@ -132,16 +132,42 @@ class DetectionProcessor:
                 'confidence': det1.get('confidence', 1.0)
             })
         return final_detections
-    def process_detections(self, clean_json_path):
+
+
+    def calculate_center(self, detections):
+        '''
+        Computes the center coordinates of each bounding box and structures the output.
+        '''
+        processed_detections = []
+        for det in detections:
+            box = det['box']
+            x_center = (box['x1'] + box['x2']) / 2
+            y_center = (box['y1'] + box['y2']) / 2
+            processed_detections.append({
+                'name': det['name'],
+                'coordinates': [x_center, y_center]
+            })
+        return processed_detections
+    
+    def process_detections(self, clean_json_path, width, height, image_name):
         '''
         Processes detections and returns cleaned results.
         '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
-    
+        
+        center_detection = self.calculate_center(processed_detections)
+        
+        final_json = {
+            "ImageHeight": height,
+            "ImageWidth": width,
+            "ImagePath": image_name,
+            "detections": center_detection
+        }
         with open(clean_json_path, 'w') as outfile:
-            json.dump({'detections': merged_detections}, outfile, indent=4)
+            # because in final jsons we only need the pt detections
+            json.dump(final_json, outfile, indent=4)
         return {'detections': merged_detections}
     
 
