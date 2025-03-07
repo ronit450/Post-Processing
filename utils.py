@@ -30,7 +30,7 @@ class PostProcess:
         try:
             corners, gsd, width, height, image_name  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
-            clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name)
+            clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
             return gsd, width, height, count
@@ -149,20 +149,30 @@ class DetectionProcessor:
             })
         return processed_detections
     
-    def process_detections(self, clean_json_path, width, height, image_name):
+    def corner_center(self, corners):
+        latitudes = [corner[1] for corner in corners]
+        longitudes = [corner[0] for corner in corners]
+
+        center_lat = sum(latitudes) / len(latitudes)
+        center_lon = sum(longitudes) / len(longitudes)
+        
+        return center_lat, center_lon
+            
+    def process_detections(self, clean_json_path, width, height, image_name, corners):
         '''
         Processes detections and returns cleaned results.
         '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
-        
+        center_lat, center_lon = self.calculate_center(corners)
         center_detection = self.calculate_center(processed_detections)
         
         final_json = {
             "ImageHeight": height,
             "ImageWidth": width,
             "ImagePath": image_name,
+            "Image_center": (center_lat, center_lon), 
             "detections": center_detection
         }
         with open(clean_json_path, 'w') as outfile:
