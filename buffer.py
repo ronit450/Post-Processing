@@ -65,20 +65,7 @@ class Cleaner:
         
         for file in files:
             print("Processing File", file)
-            self.process_file(file)  # Run sequentially instead of using threading
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-        #     futures = [executor.submit(self.process_file, file) for file in files]
-        #     for future in concurrent.futures.as_completed(futures):
-        #         try:
-        #             future.result()
-        #         except Exception as e:
-        #             print(f"Error in thread: {str(e)}")
-        # # files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.json')]
-        # print("Files",files)
-        # for file in files:
-            
-            # self.process_file(file)  # Run sequentially instead of using threading
-        print("self.analysis_obj",self.analysis_obj)
+            self.process_file(file)  # Run sequentially instead of using threading 
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.json_csv_maker()
     
@@ -125,10 +112,10 @@ class Cleaner:
 
 if __name__ == "__main__":
     box_size = 0.04 # this is in meters
-    json_folder ="/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/input"
-    post_detection_out =  "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/output"
-    csv_path = "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/image_details.csv"
-    field_json = "/home/sohail-farmevo/Documents/Code_local_runs/post_processing/Ronit_code/field_season_shot.json"
+    json_folder =r"C:\Users\User\Downloads\Sir-Kaamla"
+    post_detection_out =  r"C:\Users\User\Downloads\test_json_result-new"
+    csv_path = r"C:\Users\User\Downloads\image_details (1).csv"
+    field_json = r"C:\Users\User\Downloads\field_season_shot.json"
     
 
     

@@ -149,7 +149,7 @@ class DetectionProcessor:
             })
         return processed_detections
     
-    def corner_center(self, corners):
+    def calculate_image_center(self, corners):
         latitudes = [corner[1] for corner in corners]
         longitudes = [corner[0] for corner in corners]
 
@@ -165,7 +165,7 @@ class DetectionProcessor:
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
-        center_lat, center_lon = self.calculate_center(corners)
+        center_lat, center_lon = self.calculate_image_center(corners)
         center_detection = self.calculate_center(processed_detections)
         
         final_json = {
