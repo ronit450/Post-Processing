@@ -26,6 +26,7 @@ class Cleaner:
     
         self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
         os.makedirs(self.clean_detection_path, exist_ok=True)
+
                     
         
     def process_file(self, file):
@@ -35,8 +36,8 @@ class Cleaner:
         try:
             start_time = time.time()
             json_path = os.path.join(self.json_folder_path, file)
-            detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(file)[0]}.json")
-            shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(file)[0]}.geojson")
+            detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.json")
+            shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
             gsd, width, height, count = self.post_obj.main(
                 json_path=json_path,
                 box_size=self.box_size,
@@ -81,6 +82,8 @@ class Cleaner:
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.json_csv_maker()
     
+
+
     
     def json_csv_maker(self):
         result_folder = os.path.join(self.detect_out, 'Analysis')
@@ -92,6 +95,7 @@ class Cleaner:
         csv_path = os.path.join(result_folder, 'final_analysis.csv')
         with open(json_path, "w", encoding="utf-8") as json_file:
             json.dump(final_json, json_file, indent=4)
+        
         
         
         df = pd.DataFrame([{
