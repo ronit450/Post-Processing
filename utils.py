@@ -299,9 +299,7 @@ class Analysis:
 
     def one_snap_analysis(self):
         type_label = 'plant_count'
-        print("Label is")
         label = os.path.splitext(os.path.splitext(os.path.basename(self.label))[0])[0]
-        print(label)
         total_crop_area_sq = round((self.image_width * self.gsd) * (self.image_height * self.gsd), 2)
         target_population = round(self.field_json.get('target_stand_per_acre') / SQUARE_METER)
         emerged_population = self.count / total_crop_area_sq  # math.ceil if needed
