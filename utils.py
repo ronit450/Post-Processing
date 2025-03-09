@@ -189,7 +189,7 @@ class GeoJSONConverter:
         self.output_path = output_path
         self.image_height = image_height
         self.image_width = image_width
-        getcontext().prec = 18
+        getcontext().prec = 48
         self.gps_corners = {
             "top_left": corners[0],
             "top_right": corners[1],
@@ -219,15 +219,12 @@ class GeoJSONConverter:
             Decimal(self.gps_corners["bottom_left"][1]) * (1 - norm_x) * norm_y
         )
         
-        return f"{lat:.16f}", f"{lon:.16f}"
+        return f"{lat:.42f}", f"{lon:.42f}"
     
-
     def convert_to_geojson(self, data):
-        '''
-        Converts detection data to GeoJSON with 16 decimal places precision.
-        '''
-        features = []
+        area_in_sq_m = round(self.image_width * self.image_height, 3)
         count = 0
+        features = []
         
         for detection in data['detections']:
             x1, y1 = detection['box']['x1'], detection['box']['y1']
@@ -236,53 +233,76 @@ class GeoJSONConverter:
             
             if 'pt' in detection['name']:
                 center_x = (x1 + x2) / 2
-                center_gps = self.interpolate_to_gps(center_x, center_y)
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [float(center_gps[1]), float(center_gps[0])]  
-                    },
-                    "properties": {
-                        "name": detection['name'],
-                        "confidence": detection['confidence'],
-                        "type": "Point"
-                    }
-                }
-                features.append(feature)
+                lat_str, lon_str = self.interpolate_to_gps(center_x, center_y)
+                feature = self._create_point_feature(detection, lon_str, lat_str)
                 count += 1
+                
             elif 'gp' in detection['name']:
-                left_gps = self.interpolate_to_gps(x1, center_y)
-                right_gps = self.interpolate_to_gps(x2, center_y)
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[float(left_gps[1]), float(left_gps[0])], [float(right_gps[1]), float(right_gps[0])]]
-                    },
-                    "properties": {
-                        "name": detection['name'],
-                        "confidence": detection['confidence'],
-                        "type": "Line"
-                    }
-                }
-                features.append(feature)
-
-        area_in_sq_m = round(self.image_width * self.image_height, 3)
-        self.field_json = {
-            "type": "FeatureCollection",
-            "properties": {
-                "Area": area_in_sq_m,
-                "Per Acre Production": count / (area_in_sq_m / 4046.85642),
-            },
-            "features": features
-        }
+                left_lat, left_lon = self.interpolate_to_gps(x1, center_y)
+                right_lat, right_lon = self.interpolate_to_gps(x2, center_y)
+                feature = self._create_line_feature(detection, left_lon, left_lat, right_lon, right_lat)
+            
+            features.append(feature)
+        
+        per_acre_production = count / (area_in_sq_m / 4046.85642)
+        geojson = self._build_geojson(features, area_in_sq_m, per_acre_production)
         
         with open(self.output_path, 'w') as geojson_file:
-            json.dump(self.field_json, geojson_file, indent=2)
+            geojson_file.write(geojson)
         
         return count 
 
+    def _create_point_feature(self, detection, lon_str, lat_str):
+        feature = [
+            '    {',
+            '      "type": "Feature",',
+            '      "geometry": {',
+            '        "type": "Point",',
+            f'        "coordinates": [{lon_str}, {lat_str}]',
+            '      },',
+            '      "properties": {',
+            f'        "name": "{detection["name"]}",',
+            f'        "confidence": {detection["confidence"]},',
+            '        "type": "Point"',
+            '      }',
+            '    }'
+        ]
+        return '\n'.join(feature)
+
+    def _create_line_feature(self, detection, left_lon, left_lat, right_lon, right_lat):
+        feature = [
+            '    {',
+            '      "type": "Feature",',
+            '      "geometry": {',
+            '        "type": "LineString",',
+            f'        "coordinates": [[{left_lon}, {left_lat}], [{right_lon}, {right_lat}]]',
+            '      },',
+            '      "properties": {',
+            f'        "name": "{detection["name"]}",',
+            f'        "confidence": {detection["confidence"]},',
+            '        "type": "Line"',
+            '      }',
+            '    }'
+        ]
+        return '\n'.join(feature)
+
+    def _build_geojson(self, features, area, per_acre):
+        features_str = ',\n'.join(features)
+        
+        geojson_parts = [
+            '{',
+            '  "type": "FeatureCollection",',
+            '  "properties": {',
+            f'    "Area": {area},',
+            f'    "Per Acre Production": {per_acre}',
+            '  },',
+            '  "features": [',
+            f'{features_str}',
+            '  ]',
+            '}'
+        ]
+        
+        return '\n'.join(geojson_parts)
 
 class Analysis:
     def __init__(self, field_json, gsd, image_width, image_height, label, count):
