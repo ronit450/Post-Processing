@@ -1,23 +1,18 @@
 import json
-# import geojson
-# from PIL import Image
-# import piexif
 import numpy as np
-# from collections import defaultdict
-# from shapely.geometry import Point, LineString
-# from rtree import index
-# from collections import defaultdict
 from rtree import index
 import numpy as np
-# from shapely.geometry import box
 from pyproj import CRS
 import math
 from decimal import Decimal, getcontext
 import os 
-# import pandas as pd
 import ast
 import traceback
 import re
+from math import radians, cos
+import numpy as np
+
+R = 6378137  
 
 SQUARE_METER = 4046.856
 
@@ -33,7 +28,7 @@ class PostProcess:
             clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
-            return gsd, width, height, count
+            return gsd, width, height, count, corners
         except Exception as e:
             traceback.print_exc()
             print(f"Error occured in {json_path}: {str(e)}")
@@ -42,7 +37,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = os.path.splitext(image_name)[0]
+            image_name = image_name.replace('.json', '.JPG')
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -305,16 +300,70 @@ class GeoJSONConverter:
         return '\n'.join(geojson_parts)
 
 class Analysis:
-    def __init__(self, field_json, gsd, image_width, image_height, label, count):
+    def __init__(self, field_json, gsd, image_width, image_height, label, count, corners):
         # self.field_json = field_json
         self.image_width = image_width
         self.image_height = image_height
         self.gsd = gsd
         self.label = label
         self.count = count
+        self.corners = corners
         
         with open(field_json, 'r') as data:
             self.field_json = json.load(data)
+    
+    
+
+        
+    
+    def for_emergence(self, path):
+        latitudes = [corner[1] for corner in self.corners]
+        longitudes = [corner[0] for corner in self.corners]
+        center_lat = sum(latitudes) / len(latitudes)
+        center_lon = sum(longitudes) / len(longitudes)
+        image_area = (self.image_width * self.gsd) * (self.image_height * self.gsd)
+        path = os.path.splitext(path)[0]
+        
+        image_info = {
+        "image_name": path,
+        "image_area": image_area,
+        "avg plants per square meter": self.count / image_area, 
+        "coordinates": [center_lat, center_lon]
+        }
+    
+        return image_info
+       
+
+
+    def convert_to_geojson(self, maryam_emergence, output_path):
+        geojson = {
+            "type": "FeatureCollection",
+            "features": []
+        }
+
+        for emergence_dict in maryam_emergence:
+            feature = {
+                "type": "Feature",
+                "properties": {
+                    "image_name": emergence_dict["image_name"],
+                    "image_area": emergence_dict["image_area"],
+                     "avg plants per square meter" : emergence_dict["avg plants per square meter"]
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": emergence_dict["coordinates"][::-1]
+                }
+            }
+            geojson["features"].append(feature)
+
+        with open(output_path, "w") as f:
+            json.dump(geojson, f, indent=4)
+
+        return output_path
+    
+        
+
+        
         
 
     def one_snap_analysis(self):

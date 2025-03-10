@@ -23,9 +23,11 @@ class Cleaner:
         self.emerged_pop_count = []
         self.geojson_output = os.path.join(self.detect_out, 'geojsons')
         os.makedirs(self.detect_out, exist_ok=True)
-    
+        self.maryam_emergence = []
         self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
         os.makedirs(self.clean_detection_path, exist_ok=True)
+        os.makedirs(self.geojson_output, exist_ok=True)
+        
 
                     
         
@@ -38,7 +40,7 @@ class Cleaner:
             json_path = os.path.join(self.json_folder_path, file)
             detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.json")
             shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
-            gsd, width, height, count = self.post_obj.main(
+            gsd, width, height, count, corners = self.post_obj.main(
                 json_path=json_path,
                 box_size=self.box_size,
                 output_path=shp_output_base, 
@@ -48,8 +50,10 @@ class Cleaner:
             end_time = time.time()
             time_taken = end_time - start_time
             print(f"Processed {file} in {time_taken:.2f} seconds")
-            self.analysis_obj = Analysis(self.field_json, gsd, width, height, json_path, count)
+            self.analysis_obj = Analysis(self.field_json, gsd, width, height, json_path, count, corners)
             analysis_dict = self.analysis_obj.one_snap_analysis()
+            emergence_dict = self.analysis_obj.for_emergence(file)
+            self.maryam_emergence.append(emergence_dict)
             self.results.append(analysis_dict)
             self.emerged_pop_count.append(analysis_dict['emerged_population']/analysis_dict['total_crop_area_sq'])
         except Exception as e:
@@ -61,18 +65,19 @@ class Cleaner:
         Processes all files in the specified folder using a ThreadPoolExecutor.
         """
         # files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.out')]
-        files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.out')]
+        files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.json')]
         
         for file in files:
             print("Processing File", file)
             self.process_file(file)  # Run sequentially instead of using threading 
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
-        self.json_csv_maker()
+       
+        self.geojson_csv_maker()
     
 
 
     
-    def json_csv_maker(self):
+    def geojson_csv_maker(self):
         result_folder = os.path.join(self.detect_out, 'Analysis')
         os.makedirs(result_folder, exist_ok=True )
         final_json = []
@@ -80,6 +85,8 @@ class Cleaner:
         final_json.extend(self.results)
         json_path = os.path.join(result_folder, 'analysis.json')
         csv_path = os.path.join(result_folder, 'final_analysis.csv')
+        maryam_emergence_out = os.path.join(result_folder, 'for_maryam_emergence.geojson')
+        self.analysis_obj.convert_to_geojson(self.maryam_emergence, maryam_emergence_out)
         with open(json_path, "w", encoding="utf-8") as json_file:
             json.dump(final_json, json_file, indent=4)
         
@@ -111,11 +118,11 @@ class Cleaner:
 
 
 if __name__ == "__main__":
-    box_size = 0.04 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\Sir-Kaamla"
-    post_detection_out =  r"C:\Users\User\Downloads\test_json_result-new"
-    csv_path = r"C:\Users\User\Downloads\image_details (1).csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot.json"
+    box_size = 0.08 # this is in meters
+    json_folder =r"C:\Users\User\Downloads\momna-testing\1909\json_results"
+    post_detection_out =  r"C:\Users\User\Downloads\momna-testing\Detections-1909"
+    csv_path = r"C:\Users\User\Downloads\momna-testing\1909\image_details.csv"
+    field_json = r"C:\Users\User\Downloads\1885_field_season_shot.json"
     
 
     
