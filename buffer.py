@@ -8,6 +8,10 @@ import traceback
 import pandas as pd
 # from canopy import * 
 import math
+import os
+import json
+import ast
+
 
 
 class Cleaner:
@@ -21,13 +25,33 @@ class Cleaner:
         self.field_json = field_json
         self.results = []
         self.emerged_pop_count = []
-        self.geojson_output = os.path.join(self.detect_out, 'geojsons')
+        # self.geojson_output = os.path.join(self.detect_out, 'geojsons')
         os.makedirs(self.detect_out, exist_ok=True)
         self.maryam_emergence = []
-        self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
-        os.makedirs(self.clean_detection_path, exist_ok=True)
-        os.makedirs(self.geojson_output, exist_ok=True)
+        # self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
+        # os.makedirs(self.clean_detection_path, exist_ok=True)
+        # os.makedirs(self.geojson_output, exist_ok=True)
         
+    def read_metadata(self, geo_path, data):
+        with open(geo_path, 'r') as file:
+            geojson_data = json.load(file) 
+        image_name = os.path.splitext(os.path.basename(geo_path))[0]
+        path_till_LA = "_".join(image_name.split("_")[:6])
+        image_name = f'{path_till_LA}_LA.JPG'
+        # image_name = image_name.replace('.geojson', '.JPG')
+        print(image_name)
+        row = data[data['image_name'] == image_name]
+        
+        if not row.empty:
+            corners = ast.literal_eval(row.iloc[0]['corners'])
+            gsd = row.iloc[0]['gsd']
+            width = int(row.iloc[0]['image_width'])
+            height = int(row.iloc[0]['image_height'])
+            pt_count = sum(1 for feature in geojson_data["features"])
+
+            return  gsd, width, height,  pt_count, corners
+
+        print("row men kuchh nh he")  # Return None if image metadata is not found
 
                     
         
@@ -38,15 +62,17 @@ class Cleaner:
         try:
             start_time = time.time()
             json_path = os.path.join(self.json_folder_path, file)
-            detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.json")
-            shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
-            gsd, width, height, count, corners = self.post_obj.main(
-                json_path=json_path,
-                box_size=self.box_size,
-                output_path=shp_output_base, 
-                data = self.data,
-                clean_json_path = detection_save_path
-            )                   
+            # detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.json")
+            # shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
+            # gsd, width, height, count, corners = self.post_obj.main(
+            #     json_path=json_path,
+            #     box_size=self.box_size,
+            #     output_path=shp_output_base, 
+            #     data = self.data,
+            #     clean_json_path = detection_save_path
+            # )   
+            
+            gsd, width, height, count, corners = self.read_metadata(json_path, self.data)                
             end_time = time.time()
             time_taken = end_time - start_time
             print(f"Processed {file} in {time_taken:.2f} seconds")
@@ -65,7 +91,7 @@ class Cleaner:
         Processes all files in the specified folder using a ThreadPoolExecutor.
         """
         # files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.out')]
-        files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.json')]
+        files = [f for f in os.listdir(self.json_folder_path) if f.endswith('.geojson')]
         
         for file in files:
             print("Processing File", file)
@@ -119,10 +145,10 @@ class Cleaner:
 
 if __name__ == "__main__":
     box_size = 0.08 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\momna-testing\1909\json_results"
-    post_detection_out =  r"C:\Users\User\Downloads\momna-testing\Detections-1909"
-    csv_path = r"C:\Users\User\Downloads\momna-testing\1909\image_details.csv"
-    field_json = r"C:\Users\User\Downloads\1885_field_season_shot.json"
+    json_folder =r"C:\Users\User\Downloads\Compressed\1906_dt"
+    post_detection_out = r"C:\Users\User\Downloads\Compressed\1906_dt_analysis"
+    csv_path = r"C:\Users\User\Downloads\image_details (6).csv"
+    field_json = r"C:\Users\User\Downloads\field_season_shot (4).json"
     
 
     
