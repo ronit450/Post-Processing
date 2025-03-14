@@ -25,10 +25,10 @@ class PostProcess:
         try:
             corners, gsd, width, height, image_name  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
-            clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners)
+            clean_detection, total_count = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
-            return gsd, width, height, count, corners
+            return gsd, width, height, total_count, corners
         except Exception as e:
             traceback.print_exc()
             print(f"Error occured in {json_path}: {str(e)}")
@@ -134,6 +134,7 @@ class DetectionProcessor:
         Computes the center coordinates of each bounding box and structures the output.
         '''
         processed_detections = []
+        total_count = 0
         for det in detections:
             box = det['box']
             x_center = (box['x1'] + box['x2']) / 2
@@ -142,7 +143,8 @@ class DetectionProcessor:
                 'name': det['name'],
                 'coordinates': [x_center, y_center]
             })
-        return processed_detections
+            total_count += 1
+        return processed_detections, total_count
     
     def calculate_image_center(self, corners):
         latitudes = [corner[1] for corner in corners]
@@ -161,7 +163,7 @@ class DetectionProcessor:
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
         center_lat, center_lon = self.calculate_image_center(corners)
-        center_detection = self.calculate_center(processed_detections)
+        center_detection, total_count = self.calculate_center(processed_detections)
         
         final_json = {
             "ImageHeight": height,
@@ -173,7 +175,8 @@ class DetectionProcessor:
         with open(clean_json_path, 'w') as outfile:
             # because in final jsons we only need the pt detections
             json.dump(final_json, outfile, indent=4)
-        return {'detections': merged_detections}
+        clean_detect = {'detections': merged_detections}
+        return clean_detect, total_count
     
 
 class GeoJSONConverter:
@@ -230,13 +233,12 @@ class GeoJSONConverter:
                 center_x = (x1 + x2) / 2
                 lat_str, lon_str = self.interpolate_to_gps(center_x, center_y)
                 feature = self._create_point_feature(detection, lon_str, lat_str)
-                count += 1
-                
             elif 'gp' in detection['name']:
                 left_lat, left_lon = self.interpolate_to_gps(x1, center_y)
                 right_lat, right_lon = self.interpolate_to_gps(x2, center_y)
                 feature = self._create_line_feature(detection, left_lon, left_lat, right_lon, right_lat)
             
+            count += 1
             features.append(feature)
         
         per_acre_production = count / (area_in_sq_m / 4046.85642)
