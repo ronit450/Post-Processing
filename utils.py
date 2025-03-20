@@ -1,15 +1,10 @@
-import json
 import numpy as np
 from rtree import index
 import numpy as np
-from pyproj import CRS
-import math
 from decimal import Decimal, getcontext
 import os 
 import ast
 import traceback
-import re
-from math import radians, cos
 import numpy as np
 
 R = 6378137  
