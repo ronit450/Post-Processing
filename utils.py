@@ -393,9 +393,9 @@ class Analysis:
     def get_status_and_color(self,target_achieved):
         if target_achieved > 90:
             return "#006400", "Excellent"  # Dark Green
-        elif 70 <= target_achieved <= 90:
+        elif 80 <= target_achieved <= 90:
             return "#008000", "Good"  # Green
-        elif 50 <= target_achieved < 70:
+        elif 70 <= target_achieved < 80:
             return "#FFFF00", "Average"  # Yellow
         else:
             return "#FF0000", "Poor"  # Red

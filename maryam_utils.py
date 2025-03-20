@@ -273,11 +273,11 @@ class ZonalStatisticsProcessor:
             percent = (mean_value / self.target_pop) * 100 if mean_value != -9999 else -9999
             if percent >= 90:
                 class_value = 3
-            elif 75 <= percent < 90:
+            elif 80 <= percent < 90:
                 class_value = 2
-            elif 50 <= percent < 75:
+            elif 70 <= percent < 80:
                 class_value = 1
-            elif percent <50:
+            elif percent <70:
                 class_value = 0
             else:
                 features_to_delete.append(feature.GetFID())
