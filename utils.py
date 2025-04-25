@@ -42,6 +42,7 @@ class PostProcess:
                 gsd = row.iloc[0]['gsd']
                 width = int(row.iloc[0]['image_width'])
                 height = int(row.iloc[0]['image_height'])
+                # print(f"this Image: {image_name}, GSD: {gsd}, Width: {width}, Height: {height}, Coordinates: {coordinates}")
                 return coordinates, gsd, width, height , image_name
         except Exception as e:
             print(f"Error reading metadata from {json_path}: {str(e)}")
@@ -133,11 +134,18 @@ class DetectionProcessor:
         processed_detections = []
         for det in detections:
             box = det['box']
-            x_center = (box['x1'] + box['x2']) / 2
-            y_center = (box['y1'] + box['y2']) / 2
+            # x_center = (box['x1'] + box['x2']) / 2
+            # y_center = (box['y1'] + box['y2']) / 2
             processed_detections.append({
                 'name': det['name'],
-                'coordinates': [x_center, y_center]
+                # 'coordinates': [x_center, y_center]
+                'box': { 
+                    'x1': box['x1'],
+                    'y1': box['y1'],
+                    'x2': box['x2'],
+                    'y2': box['y2']
+                },
+                'confidence': det.get('confidence', 1.0),
             })
         return processed_detections
     
@@ -224,17 +232,13 @@ class GeoJSONConverter:
             x2, y2 = detection['box']['x2'], detection['box']['y2']
             center_y = (y1 + y2) / 2
             
-            if 'pt' in detection['name']:
-                center_x = (x1 + x2) / 2
-                lat_str, lon_str = self.interpolate_to_gps(center_x, center_y)
-                feature = self._create_point_feature(detection, lon_str, lat_str)
-                count += 1
-                
-            elif 'gp' in detection['name']:
-                left_lat, left_lon = self.interpolate_to_gps(x1, center_y)
-                right_lat, right_lon = self.interpolate_to_gps(x2, center_y)
-                feature = self._create_line_feature(detection, left_lon, left_lat, right_lon, right_lat)
+
+            center_x = (x1 + x2) / 2
+            lat_str, lon_str = self.interpolate_to_gps(center_x, center_y)
+            feature = self._create_point_feature(detection, lon_str, lat_str)
+            count += 1
             
+
             features.append(feature)
         
         per_acre_production = count / (area_in_sq_m / 4046.85642)

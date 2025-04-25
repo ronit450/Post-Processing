@@ -118,11 +118,11 @@ class Cleaner:
 
 
 if __name__ == "__main__":
-    box_size = 0.08 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\1906\1906"
-    post_detection_out =  r"C:\Users\User\Downloads\kamla_boss"
-    csv_path = r"C:\Users\User\Downloads\image_details (11).csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot (8).json"
+    box_size = 0.02 # this is in meters
+    json_folder =r"C:\Users\User\Downloads\2images_FK\2images_FK"
+    post_detection_out =  r"C:\Users\User\Downloads\2images_FK\2images_FK_results"
+    csv_path = r"C:\Users\User\Downloads\new_sugarbeet.csv"
+    field_json = r"C:\Users\User\Downloads\field_season_shot (7).json"
     
 
     
