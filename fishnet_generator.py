@@ -14,7 +14,7 @@ class SpatialAnalysisProcessor:
         
         # Set output paths from GeoSpatialProcessor
         idw_output_clipped = os.path.join(self.geo_processor.OUTPUT_FOLDER, "idw_output_clipped.tif")
-        fishnet_clipped = os.path.join(self.geo_processor.OUTPUT_FOLDER, "fishnet_clipped.geojson")
+        fishnet_clipped = os.path.join(self.geo_processor.OUTPUT_FOLDER, "summary.geojson")
       
         
         # Step 2: Update ZonalStatisticsProcessor with the new files
@@ -36,6 +36,6 @@ if __name__ == "__main__":
         output_folder=r"C:\Users\User\Downloads\maryam-test", 
         resolution=0.00000898,
         fishnet_cell_size=0.000089,
-        target_pop=4.88,
+        target_pop=4.88, #Per m2
     )
     processor.run_analysis()
