@@ -6,7 +6,7 @@ import os
 import ast
 import traceback
 import numpy as np
-
+import cv2  
 import json 
 
 R = 6378137  
@@ -25,7 +25,7 @@ class PostProcess:
             clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners, gsd)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
-            return gsd, width, height, count, corners
+            return gsd, width, height, count, corners, clean_detection
         except Exception as e:
             traceback.print_exc()
             print(f"Error occured in {json_path}: {str(e)}")
@@ -126,6 +126,18 @@ class DetectionProcessor:
             })
         return final_detections
 
+    def plotter(self, image_path, detections, output_path): 
+        img = cv2.imread(image_path)  
+        if img is None:
+                raise ValueError(f"Failed to load image from {image_path}")
+        for det in detections:
+            x1, y1, x2, y2 = det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']
+            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+        
+        success = cv2.imwrite(output_path, img)
+        if not success:
+            raise IOError(f"Failed to write image to {output_path}")
+                
 
     def calculate_center(self, detections):
         '''
