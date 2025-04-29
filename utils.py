@@ -13,15 +13,25 @@ R = 6378137
 
 SQUARE_METER = 4046.856
 
+
+class crop:
+    def __init__(self, name, buffer_size):
+        self.name = name
+        self.buffer_size = buffer_size
+    
+    def crop_buffer_size(self, name):
+        return 
+ 
+
 class PostProcess:
     '''
     The post process will handle detection conversion and output generation.
     '''
-    def main(self, json_path, box_size, output_path, data, clean_json_path) -> None:
+    def main(self, json_path, class_obj_lst, output_path, data, clean_json_path) -> None:
         
         try:
             corners, gsd, width, height, image_name  = self.read_corners_and_gsd_csv(data, json_path)
-            Detection_obj = DetectionProcessor(json_path, gsd, box_size)
+            Detection_obj = DetectionProcessor(json_path, gsd, class_obj_lst)
             clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners, gsd)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
@@ -34,7 +44,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.JPG')
+            image_name = image_name.replace('.json', '.jpg')
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -53,10 +63,10 @@ class DetectionProcessor:
     '''
     Processes and filters detections based on specific criteria.
     '''
-    def __init__(self, input_path, gcd, box_size):
+    def __init__(self, input_path, gcd, class_obj_lst):
         self.input_path = input_path
         self.gcd = gcd
-        self.box_size = box_size
+        self.class_obj_lst = class_obj_lst
         self.detections = self.load_detections()
     def load_detections(self):
         '''
@@ -74,7 +84,9 @@ class DetectionProcessor:
         for det in detections:
             if 'pt' in det['name']:
                 box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
-                half_size = (self.box_size) / self.gcd
+                # so now I have the name of that detection and I can easily map it to its size
+                box_size = self.class_obj_lst[det['name']]
+                half_size = (box_size / 2) / self.gcd
                 center = (box[:2] + box[2:]) / 2
                 new_box = np.hstack([center - half_size, center + half_size])
                 det['box'] = {

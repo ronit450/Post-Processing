@@ -12,10 +12,10 @@ import shutil
 
 
 class Cleaner:
-    def __init__(self, json_folder_path, detect_output_folder, box_size, csv_path, field_json, plot_folder = None) -> None:
+    def __init__(self, json_folder_path, detect_output_folder, csv_path, field_json, class_obj_lst, plot_folder = None) -> None:
         self.json_folder_path = json_folder_path
         self.detect_out =detect_output_folder
-        self.box_size = box_size
+        self.class_obj_lst = class_obj_lst
         self.data = pd.read_csv(csv_path)
         self.post_obj = PostProcess()
         self.max_workers = max(1, multiprocessing.cpu_count() - 4)
@@ -43,13 +43,13 @@ class Cleaner:
             shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
             gsd, width, height, count, corners, clean_detection = self.post_obj.main(
                 json_path=json_path,
-                box_size=self.box_size,
+                class_obj_lst=self.class_obj_lst,
                 output_path=shp_output_base, 
                 data = self.data,
                 clean_json_path = detection_save_path
             ) 
             
-            plot_image_path = os.path.join(self.plot_folder, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG")
+            plot_image_path = os.path.join(self.plot_folder, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.jpg")
             if plot_image_path:
                 DetectionProcessor.plotter(self, plot_image_path, clean_detection, os.path.join(self.plot_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG"))
                               
@@ -124,20 +124,30 @@ class Cleaner:
 
 
 if __name__ == "__main__":
-    box_size = 0.02 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\2images_FK\2images_FK"
-    post_detection_out =  r"C:\Users\User\Downloads\2images_FK\2images_FK_results"
-    csv_path = r"C:\Users\User\Downloads\new_sugarbeet.csv"
+   
+    json_folder =r"C:\Users\User\Downloads\corty-test\test-data"
+    post_detection_out =  r"C:\Users\User\Downloads\corty-test\test-data_result"
+    csv_path = r"C:\Users\User\Downloads\corty-test\image_details.csv"
     field_json = r"C:\Users\User\Downloads\field_season_shot (7).json"
-    plot_folder = r""
+    plot_folder = r"C:\Users\User\Downloads\corty-test\test-data"
+    
+    # define the class list 
+    class_obj_lst = {
+        'cn_coty' : 0.02, 
+        'cn_4L' : 0.06
+    }
+    
+    
     
 
     
     processor = Cleaner(
         json_folder, 
         post_detection_out, 
-        box_size,
         csv_path, 
-        field_json
+        field_json, 
+        class_obj_lst,
+        plot_folder
+        
     )
     processor.process()
