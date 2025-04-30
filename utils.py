@@ -22,10 +22,12 @@ class PostProcess:
         try:
             corners, gsd, width, height, image_name  = self.read_corners_and_gsd_csv(data, json_path)
             Detection_obj = DetectionProcessor(json_path, gsd, box_size)
+        
             clean_detection = Detection_obj.process_detections(clean_json_path, width, height, image_name, corners, gsd)
             geojson_obj = GeoJSONConverter(output_path, corners, width, height)
             count = geojson_obj.convert_to_geojson(clean_detection)
-            return gsd, width, height, count, corners, clean_detection
+      
+            return gsd, width, height, count, corners
         except Exception as e:
             traceback.print_exc()
             print(f"Error occured in {json_path}: {str(e)}")
@@ -34,7 +36,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.JPG')
+            image_name = image_name.replace('.json', '.jpg')
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -185,6 +187,7 @@ class DetectionProcessor:
             "ImageWidth": width,
             "ImagePath": image_name,
             "Image_center": (center_lat, center_lon), \
+            "Image_detections": merged_detections,
             'gsd': gsd,
             "detections": center_detection
         }

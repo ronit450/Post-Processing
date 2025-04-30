@@ -9,6 +9,7 @@ import pandas as pd
 # from canopy import * 
 import math
 import shutil
+import random 
 
 
 class Cleaner:
@@ -28,6 +29,7 @@ class Cleaner:
         self.maryam_emergence = []
         self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
         self.plot_output = os.path.join(self.detect_out, 'plot_images')
+        os.makedirs(self.plot_output , exist_ok=True)
         os.makedirs(self.clean_detection_path, exist_ok=True)
         os.makedirs(self.geojson_output, exist_ok=True)
         self.count = 0
@@ -41,18 +43,14 @@ class Cleaner:
             json_path = os.path.join(self.json_folder_path, file)
             detection_save_path = os.path.join(self.clean_detection_path, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.json")
             shp_output_base = os.path.join(self.geojson_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.geojson")
-            gsd, width, height, count, corners, clean_detection = self.post_obj.main(
+            gsd, width, height, count, corners = self.post_obj.main(
                 json_path=json_path,
                 box_size=self.box_size,
                 output_path=shp_output_base, 
                 data = self.data,
                 clean_json_path = detection_save_path
             ) 
-            
-            plot_image_path = os.path.join(self.plot_folder, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG")
-            if plot_image_path:
-                DetectionProcessor.plotter(self, plot_image_path, clean_detection, os.path.join(self.plot_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG"))
-                              
+                                 
             end_time = time.time()
             time_taken = end_time - start_time
             print(f"Processed {file} in {time_taken:.2f} seconds")
@@ -79,6 +77,25 @@ class Cleaner:
             self.process_file(file)  # Run sequentially instead of using threading 
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.geojson_csv_maker()
+        self.plot_random_images()
+    
+    
+    def plot_random_images(self, num_images=5):
+        all_images = [f for f in os.listdir(self.plot_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.tif', '.JPG'))]
+        selected_images = random.sample(all_images, k=min(num_images, len(all_images)))
+        for image_file in selected_images:
+            try:
+                image_path = os.path.join(self.plot_folder, image_file)
+                detection_json_path = os.path.join(self.clean_detection_path, image_file.split('.')[0] + '.json')
+                output_path = os.path.join(self.plot_output, f"plot_{image_file}")
+                if os.path.exists(detection_json_path):
+                    with open(detection_json_path, 'r') as f:
+                        json_data = json.load(f)
+                        detections = json_data.get("Image_detections", [])
+                    DetectionProcessor.plotter(self, image_path, detections, output_path)
+            except Exception:
+                print(traceback.format_exc())
+
     
 
 
@@ -124,12 +141,12 @@ class Cleaner:
 
 
 if __name__ == "__main__":
-    box_size = 0.02 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\2images_FK\2images_FK"
-    post_detection_out =  r"C:\Users\User\Downloads\2images_FK\2images_FK_results"
-    csv_path = r"C:\Users\User\Downloads\new_sugarbeet.csv"
+    box_size = 0.06 # this is in meters
+    json_folder =r"C:\Users\User\Downloads\corty-test\test-data"
+    post_detection_out =  r"C:\Users\User\Downloads\corty-test\test-data_results"
+    csv_path = r"C:\Users\User\Downloads\corty-test\image_details.csv"
     field_json = r"C:\Users\User\Downloads\field_season_shot (7).json"
-    plot_folder = r""
+    plot_folder = r"C:\Users\User\Downloads\corty-test\test-data"
     
 
     
@@ -138,6 +155,7 @@ if __name__ == "__main__":
         post_detection_out, 
         box_size,
         csv_path, 
-        field_json
+        field_json, 
+        plot_folder
     )
     processor.process()
