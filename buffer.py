@@ -145,7 +145,7 @@ if __name__ == "__main__":
     json_folder =r"C:\Users\User\Downloads\corty-test\test-data"
     post_detection_out =  r"C:\Users\User\Downloads\corty-test\test-data_results"
     csv_path = r"C:\Users\User\Downloads\corty-test\image_details.csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot (7).json"
+    field_json = r"C:\Users\User\Downloads\tree_field.json"
     plot_folder = r"C:\Users\User\Downloads\corty-test\test-data"
     
 

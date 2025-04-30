@@ -425,36 +425,40 @@ class Analysis:
      
     
     def generate_field_analysis(self, sum_emerged_pop):
-        target_population = self.field_json.get('target_stand_per_acre', 1)
-        total_crop_area_acres = self.field_json['polygon']['size']
-        emerged_population = (sum(sum_emerged_pop) / len(sum_emerged_pop)) * 4046.856
-        emergence_rate = (emerged_population / target_population * 100) if target_population else 0
-        yield_loss_plants = target_population - emerged_population
-        yield_loss_percentage = (yield_loss_plants / target_population * 100) if target_population else 0
-        
-        color, plant_count = self.get_status_and_color(emergence_rate)
+        try:
+            target_population = self.field_json.get('target_stand_per_acre', 1)
+            total_crop_area_acres = self.field_json['polygon']['size']
+            emerged_population = (sum(sum_emerged_pop) / len(sum_emerged_pop)) * 4046.856
+            emergence_rate = (emerged_population / target_population * 100) if target_population else 0
+            yield_loss_plants = target_population - emerged_population
+            yield_loss_percentage = (yield_loss_plants / target_population * 100) if target_population else 0
+            
+            color, plant_count = self.get_status_and_color(emergence_rate)
 
-        field_analysis_data = {
-            "label": "summary",
-            "type": "PlantCount",
-            "company": "",
-            "field_id": f"Field {self.field_json.get('id', '')}",
-            "boundary_acres": round(total_crop_area_acres,2), #Done 
-            "crop_type": self.field_json.get('cropName', ""),
-            "farm": self.field_json.get('name', ""),
-            "plantation_date": self.field_json.get('seeding_date', ""),
-            "flight_scan_date": self.field_json.get('flight_scan_date', ""),
-            "total_crop_area_acres": round(total_crop_area_acres,2),
-            "target_population_per_acre": round(target_population,0),
-            "emerged_population_per_acre": round(emerged_population,0),
-            "total_emerged_plants": round(emerged_population * total_crop_area_acres,0) ,
-            "total_target_plants": round(target_population * total_crop_area_acres,0),
-            "emergence_rate": round(emergence_rate,2),
-            "yield_loss_plants": round(yield_loss_plants,0),
-            "yield_loss_percentage": round(yield_loss_percentage,2),
-            "color": color,
-            "plant_count": plant_count
-        }
+            field_analysis_data = {
+                "label": "summary",
+                "type": "PlantCount",
+                "company": "",
+                "field_id": f"Field {self.field_json.get('id', '')}",
+                "boundary_acres": round(total_crop_area_acres,2), #Done 
+                "crop_type": self.field_json.get('cropName', ""),
+                "farm": self.field_json.get('name', ""),
+                "plantation_date": self.field_json.get('seeding_date', ""),
+                "flight_scan_date": self.field_json.get('flight_scan_date', ""),
+                "total_crop_area_acres": round(total_crop_area_acres,2),
+                "target_population_per_acre": round(target_population,0),
+                "emerged_population_per_acre": round(emerged_population,0),
+                "total_emerged_plants": round(emerged_population * total_crop_area_acres,0) ,
+                "total_target_plants": round(target_population * total_crop_area_acres,0),
+                "emergence_rate": round(emergence_rate,2),
+                "yield_loss_plants": round(yield_loss_plants,0),
+                "yield_loss_percentage": round(yield_loss_percentage,2),
+                "color": color,
+                "plant_count": plant_count
+            }
+        except Exception as e:
+            print(f"Error generating field analysis: {str(e)}")
+            field_analysis_data = {}
 
         return field_analysis_data
 
