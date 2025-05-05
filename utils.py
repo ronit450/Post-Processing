@@ -148,17 +148,17 @@ class DetectionProcessor:
         processed_detections = []
         for det in detections:
             box = det['box']
-            # x_center = (box['x1'] + box['x2']) / 2
-            # y_center = (box['y1'] + box['y2']) / 2
+            x_center = (box['x1'] + box['x2']) / 2
+            y_center = (box['y1'] + box['y2']) / 2
             processed_detections.append({
                 'name': det['name'],
-                # 'coordinates': [x_center, y_center]
-                'box': { 
-                    'x1': box['x1'],
-                    'y1': box['y1'],
-                    'x2': box['x2'],
-                    'y2': box['y2']
-                },
+                'coordinates': [x_center, y_center],
+                # 'box': { 
+                #     'x1': box['x1'],
+                #     'y1': box['y1'],
+                #     'x2': box['x2'],
+                #     'y2': box['y2']
+                # },
                 'confidence': det.get('confidence', 1.0),
             })
         return processed_detections
