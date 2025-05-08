@@ -44,7 +44,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.jpg')
+            image_name = image_name.replace('.json', '.JPG')
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -82,23 +82,24 @@ class DetectionProcessor:
         processed_detections = []
         unprocessed_detections = []
         for det in detections:
-            if 'pt' in det['name']:
-                box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
-                # so now I have the name of that detection and I can easily map it to its size
-                box_size = self.class_obj_lst[det['name']]
-                half_size = (box_size / 2) / self.gcd
-                center = (box[:2] + box[2:]) / 2
-                new_box = np.hstack([center - half_size, center + half_size])
-                det['box'] = {
-                    'x1': new_box[0],
-                    'y1': new_box[1],
-                    'x2': new_box[2],
-                    'y2': new_box[3]
-                }
-                processed_detections.append(det)
-            else:
-                unprocessed_detections.append(det)
+        
+            box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
+            # so now I have the name of that detection and I can easily map it to its size
+            box_size = self.class_obj_lst[det['name']]
+            half_size = (box_size / 2) / self.gcd
+            center = (box[:2] + box[2:]) / 2
+            new_box = np.hstack([center - half_size, center + half_size])
+            det['box'] = {
+                'x1': new_box[0],
+                'y1': new_box[1],
+                'x2': new_box[2],
+                'y2': new_box[3]
+            }
+            processed_detections.append(det)
+        else:
+            unprocessed_detections.append(det)
         return processed_detections, unprocessed_detections
+    
     def detect_and_merge(self, detections):
         '''
         Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
@@ -137,18 +138,35 @@ class DetectionProcessor:
                 'confidence': det1.get('confidence', 1.0), 
             })
         return final_detections
-
+    
+    
     def plotter(self, image_path, detections, output_path): 
         img = cv2.imread(image_path)  
         if img is None:
-                raise ValueError(f"Failed to load image from {image_path}")
-        for det in detections:
-            x1, y1, x2, y2 = det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']
-            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-        
+            raise ValueError(f"Failed to load image from {image_path}")
+
+        for det in detections['detections']:
+            try:
+                x1, y1 = det['box']['x1'], det['box']['y1']
+                x2, y2 = det['box']['x2'], det['box']['y2']
+                
+                x1 = int(round(det['box']['x1']))
+                y1 = int(round(det['box']['y1']))
+                x2 = int(round(det['box']['x2']))
+                y2 = int(round(det['box']['y2']))
+
+                label = det.get('name', 'object')
+                confidence = det.get('confidence', 0)
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.putText(img, f"{label} {confidence:.2f}", (x1, y1 - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            except KeyError as e:
+                print(f"Missing key in detection: {e}")
+
         success = cv2.imwrite(output_path, img)
         if not success:
             raise IOError(f"Failed to write image to {output_path}")
+
                 
 
     def calculate_center(self, detections):
@@ -158,11 +176,11 @@ class DetectionProcessor:
         processed_detections = []
         for det in detections:
             box = det['box']
-            # x_center = (box['x1'] + box['x2']) / 2
-            # y_center = (box['y1'] + box['y2']) / 2
+            x_center = (box['x1'] + box['x2']) / 2
+            y_center = (box['y1'] + box['y2']) / 2
             processed_detections.append({
                 'name': det['name'],
-                # 'coordinates': [x_center, y_center]
+                'coordinates': [x_center, y_center],
                 'box': { 
                     'x1': box['x1'],
                     'y1': box['y1'],
@@ -187,6 +205,7 @@ class DetectionProcessor:
         Processes detections and returns cleaned results.
         '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
+        # print(processed_detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
         center_lat, center_lon = self.calculate_image_center(corners)

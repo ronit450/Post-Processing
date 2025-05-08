@@ -9,6 +9,7 @@ import pandas as pd
 # from canopy import * 
 import math
 import shutil
+import random 
 
 
 class Cleaner:
@@ -28,6 +29,7 @@ class Cleaner:
         self.maryam_emergence = []
         self.clean_detection_path = os.path.join(self.detect_out, 'cleaned_jsons')
         self.plot_output = os.path.join(self.detect_out, 'plot_images')
+        os.makedirs(self.plot_output, exist_ok=True)
         os.makedirs(self.clean_detection_path, exist_ok=True)
         os.makedirs(self.geojson_output, exist_ok=True)
         self.count = 0
@@ -79,6 +81,24 @@ class Cleaner:
             self.process_file(file)  # Run sequentially instead of using threading 
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.geojson_csv_maker()
+
+    
+    
+    def plot_random_images(self, num_images=5):
+        all_images = [f for f in os.listdir(self.plot_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.tif', '.JPG'))]
+        selected_images = random.sample(all_images, k=min(num_images, len(all_images)))
+        for image_file in selected_images:
+            try:
+                image_path = os.path.join(self.plot_folder, image_file)
+                detection_json_path = os.path.join(self.clean_detection_path, image_file.split('.')[0] + '.json')
+                output_path = os.path.join(self.plot_output, f"plot_{image_file}")
+                if os.path.exists(detection_json_path):
+                    with open(detection_json_path, 'r') as f:
+                        json_data = json.load(f)
+                        detections = json_data.get("detections", [])
+                    DetectionProcessor.plotter(self, image_path, detections, output_path)
+            except Exception:
+                print(traceback.format_exc())
     
 
 
@@ -125,16 +145,17 @@ class Cleaner:
 
 if __name__ == "__main__":
    
-    json_folder =r"C:\Users\User\Downloads\corty-test\test-data"
-    post_detection_out =  r"C:\Users\User\Downloads\corty-test\test-data_result"
-    csv_path = r"C:\Users\User\Downloads\corty-test\image_details.csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot (7).json"
-    plot_folder = r"C:\Users\User\Downloads\corty-test\test-data"
+    json_folder =r"C:\Users\User\Downloads\dont_let_me_live\jsons"
+    post_detection_out =  r"C:\Users\User\Downloads\dont_let_me_live\result"
+    csv_path = r"C:\Users\User\Downloads\dont_let_me_live\images\image_details.csv"
+    field_json = r"C:\Users\User\Downloads\field_season_shot (6).json"
+    plot_folder = r"C:\Users\User\Downloads\dont_let_me_live\images"
     
     # define the class list 
     class_obj_lst = {
         'cn_coty' : 0.02, 
         'cn_4L' : 0.06
+    
     }
     
     
