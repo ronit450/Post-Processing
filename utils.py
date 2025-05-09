@@ -100,6 +100,45 @@ class DetectionProcessor:
             unprocessed_detections.append(det)
         return processed_detections, unprocessed_detections
     
+    def remove_contained_boxes(self, detections):
+        """
+        Keep only the largest‐class detection for any fully‐contained boxes.
+        Uses an R-tree to get O(n log n) performance.
+        """
+        # 1) sort descending by “real” size so big boxes come first
+        dets = sorted(
+            detections,
+            key=lambda d: self.class_obj_lst.get(d['name'], 0),
+            reverse=True
+        )
+
+        keep = []
+        rtree_idx = index.Index()
+
+        for det in dets:
+            # pack into a 4-tuple
+            x1, y1 = det['box']['x1'], det['box']['y1']
+            x2, y2 = det['box']['x2'], det['box']['y2']
+            bbox = (x1, y1, x2, y2)
+
+            # find any previously kept box whose envelope overlaps
+            hits = list(rtree_idx.intersection(bbox))
+
+            # check if *any* of those actually fully contains this box
+            contained = False
+            for idx in hits:
+                k = keep[idx]['box']
+                if (k['x1'] <= x1 <= x2 <= k['x2'] and
+                    k['y1'] <= y1 <= y2 <= k['y2']):
+                    contained = True
+                    break
+
+            if not contained:
+                # no larger box contains it → keep & index
+                rtree_idx.insert(len(keep), bbox)
+                keep.append(det)
+
+        return keep
     def detect_and_merge(self, detections):
         '''
         Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
@@ -208,6 +247,8 @@ class DetectionProcessor:
         # print(processed_detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
+        filtered = self.remove_contained_boxes(merged_detections)
+        
         center_lat, center_lon = self.calculate_image_center(corners)
         center_detection = self.calculate_center(processed_detections)
         
@@ -222,7 +263,7 @@ class DetectionProcessor:
         with open(clean_json_path, 'w') as outfile:
             # because in final jsons we only need the pt detections
             json.dump(final_json, outfile, indent=4)
-        return {'detections': merged_detections}
+        return {'detections': filtered}
     
 
 class GeoJSONConverter:
