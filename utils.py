@@ -84,6 +84,7 @@ class DetectionProcessor:
         for det in detections:
         
             box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
+            
             # so now I have the name of that detection and I can easily map it to its size
             box_size = self.class_obj_lst[det['name']]
             half_size = (box_size / 2) / self.gcd
@@ -256,7 +257,7 @@ class DetectionProcessor:
             "ImageHeight": height,
             "ImageWidth": width,
             "ImagePath": image_name,
-            "Image_center": (center_lat, center_lon), \
+            "Image_center": (center_lat, center_lon), 
             'gsd': gsd,
             "detections": center_detection
         }
@@ -343,7 +344,7 @@ class GeoJSONConverter:
             '      },',
             '      "properties": {',
             f'        "name": "{detection["name"]}",',
-            f'        "confidence": {detection["confidence"]},',
+            f'        "confidence": {detection.get("confidence", 0)},',
             '        "type": "Point"',
             '      }',
             '    }'

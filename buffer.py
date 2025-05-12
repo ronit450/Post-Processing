@@ -51,9 +51,9 @@ class Cleaner:
                 clean_json_path = detection_save_path
             ) 
             
-            plot_image_path = os.path.join(self.plot_folder, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.jpg")
-            if plot_image_path:
-                DetectionProcessor.plotter(self, plot_image_path, clean_detection, os.path.join(self.plot_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG"))
+            
+            # if plot_image_path:
+            #     DetectionProcessor.plotter(self, plot_image_path, clean_detection, os.path.join(self.plot_output, f"{os.path.splitext(os.path.splitext(file)[0])[0]}.JPG"))
                               
             end_time = time.time()
             time_taken = end_time - start_time
@@ -81,6 +81,8 @@ class Cleaner:
             self.process_file(file)  # Run sequentially instead of using threading 
         self.analysis_field_dict = self.analysis_obj.generate_field_analysis(self.emerged_pop_count)
         self.geojson_csv_maker()
+        if self.plot_folder:
+            self.plot_random_images()
 
     
     
@@ -145,16 +147,15 @@ class Cleaner:
 
 if __name__ == "__main__":
    
-    json_folder =r"C:\Users\User\Downloads\dont_let_me_live\jsons"
-    post_detection_out =  r"C:\Users\User\Downloads\dont_let_me_live\result"
-    csv_path = r"C:\Users\User\Downloads\dont_let_me_live\images\image_details.csv"
-    field_json = r"C:\Users\User\Downloads\field_season_shot (6).json"
-    plot_folder = r"C:\Users\User\Downloads\dont_let_me_live\images"
+    json_folder =r"C:\Users\User\Downloads\habab_new_chec_results"
+    post_detection_out =  r"C:\Users\User\Downloads\habab_new_chec_results\pp_new_2"
+    csv_path = r"C:\Users\User\Downloads\image_details (3).csv"
+    field_json = r"C:\Users\User\Downloads\field_season_shot (1).json"
+    plot_folder = r"C:\Users\User\Downloads\habab_new_chec\images"
     
     # define the class list 
     class_obj_lst = {
-        'cn_coty' : 0.02, 
-        'cn_4L' : 0.06
+        'plant' : 0.09, 
     
     }
     
