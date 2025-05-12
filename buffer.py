@@ -147,15 +147,16 @@ class Cleaner:
 
 if __name__ == "__main__":
    
-    json_folder =r"C:\Users\User\Downloads\habab_new_chec_results"
-    post_detection_out =  r"C:\Users\User\Downloads\habab_new_chec_results\pp_new_2"
-    csv_path = r"C:\Users\User\Downloads\image_details (3).csv"
+    json_folder =r"C:\Users\User\Downloads\Compressed\ronit_Canola\json"
+    post_detection_out =  r"C:\Users\User\Downloads\Compressed\ronit_Canola\result"
+    csv_path = r"C:\Users\User\Downloads\Compressed\ronit_Canola\ronit_Canola\image_details.csv"
     field_json = r"C:\Users\User\Downloads\field_season_shot (1).json"
-    plot_folder = r"C:\Users\User\Downloads\habab_new_chec\images"
+    plot_folder = r"C:\Users\User\Downloads\Compressed\ronit_Canola\images"
     
     # define the class list 
     class_obj_lst = {
-        'plant' : 0.09, 
+        'cn_coty' : 0.01,
+        'cn_4L' : 0.02 
     
     }
     

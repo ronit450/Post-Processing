@@ -12,15 +12,6 @@ import json
 R = 6378137  
 
 SQUARE_METER = 4046.856
-
-
-class crop:
-    def __init__(self, name, buffer_size):
-        self.name = name
-        self.buffer_size = buffer_size
-    
-    def crop_buffer_size(self, name):
-        return 
  
 
 class PostProcess:
@@ -84,6 +75,12 @@ class DetectionProcessor:
         for det in detections:
         
             box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
+            # now soring the unfiltered detection area 
+            
+            unflitered_area = abs(det['box']['x2'] - det['box']['x1']) * abs(det['box']['y2'] - det['box']['y1'])
+            unflitered_area_meters = (unflitered_area) * (self.gcd ** 2)
+            det['unfiltered_area_m2'] = unflitered_area_meters
+            
             
             # so now I have the name of that detection and I can easily map it to its size
             box_size = self.class_obj_lst[det['name']]
@@ -185,7 +182,7 @@ class DetectionProcessor:
         if img is None:
             raise ValueError(f"Failed to load image from {image_path}")
 
-        for det in detections['detections']:
+        for det in detections:
             try:
                 x1, y1 = det['box']['x1'], det['box']['y1']
                 x2, y2 = det['box']['x2'], det['box']['y2']
@@ -228,6 +225,7 @@ class DetectionProcessor:
                     'y2': box['y2']
                 },
                 'confidence': det.get('confidence', 1.0),
+                'unfiltered_area_m2': det.get('unfiltered_area_m2', 0)
             })
         return processed_detections
     
@@ -245,13 +243,12 @@ class DetectionProcessor:
         Processes detections and returns cleaned results.
         '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
-        # print(processed_detections)
         combined_detections = processed_detections + unprocessed_detections
         merged_detections = self.detect_and_merge(combined_detections)
         filtered = self.remove_contained_boxes(merged_detections)
         
         center_lat, center_lon = self.calculate_image_center(corners)
-        center_detection = self.calculate_center(processed_detections)
+        center_detection = self.calculate_center(filtered)
         
         final_json = {
             "ImageHeight": height,
@@ -345,6 +342,7 @@ class GeoJSONConverter:
             '      "properties": {',
             f'        "name": "{detection["name"]}",',
             f'        "confidence": {detection.get("confidence", 0)},',
+            f'        "unfiltered_area_m2": {detection.get("unfiltered_area_m2", 0)},',
             '        "type": "Point"',
             '      }',
             '    }'
