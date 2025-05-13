@@ -153,6 +153,7 @@ if __name__ == "__main__":
     field_json = r"C:\Users\User\Downloads\field_season_shot (1).json"
     plot_folder = r"C:\Users\User\Downloads\Compressed\ronit_Canola\images"
     
+    
     # define the class list 
     class_obj_lst = {
         'cn_coty' : 0.01,

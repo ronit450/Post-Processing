@@ -100,10 +100,11 @@ class DetectionProcessor:
     
     def remove_contained_boxes(self, detections):
         """
-        Keep only the largest‐class detection for any fully‐contained boxes.
+        Keep only the largest-class detection for any overlapping boxes, 
+        even if overlap is as small as 1%.
         Uses an R-tree to get O(n log n) performance.
         """
-        # 1) sort descending by “real” size so big boxes come first
+        # 1) sort descending by "real" size so big boxes come first
         dets = sorted(
             detections,
             key=lambda d: self.class_obj_lst.get(d['name'], 0),
@@ -114,7 +115,6 @@ class DetectionProcessor:
         rtree_idx = index.Index()
 
         for det in dets:
-            # pack into a 4-tuple
             x1, y1 = det['box']['x1'], det['box']['y1']
             x2, y2 = det['box']['x2'], det['box']['y2']
             bbox = (x1, y1, x2, y2)
@@ -122,17 +122,24 @@ class DetectionProcessor:
             # find any previously kept box whose envelope overlaps
             hits = list(rtree_idx.intersection(bbox))
 
-            # check if *any* of those actually fully contains this box
-            contained = False
+            # check if *any* of those has ANY overlap with this box
+            overlapped = False
             for idx in hits:
                 k = keep[idx]['box']
-                if (k['x1'] <= x1 <= x2 <= k['x2'] and
-                    k['y1'] <= y1 <= y2 <= k['y2']):
-                    contained = True
+                
+                # Check for ANY overlap between boxes
+                # Two boxes overlap if:
+                # - One box's left edge is to the left of other box's right edge, AND
+                # - One box's right edge is to the right of other box's left edge, AND
+                # - One box's top edge is above other box's bottom edge, AND
+                # - One box's bottom edge is below other box's top edge
+                if (x1 < k['x2'] and x2 > k['x1'] and
+                    y1 < k['y2'] and y2 > k['y1']):
+                    overlapped = True
                     break
 
-            if not contained:
-                # no larger box contains it → keep & index
+            if not overlapped:
+                # no larger box overlaps it → keep & index
                 rtree_idx.insert(len(keep), bbox)
                 keep.append(det)
 

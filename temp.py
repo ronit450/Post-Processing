@@ -1,30 +1,82 @@
+#!/usr/bin/env python3
 import os
 import json
+from pathlib import Path
 
-def convert_annotation_file(path, default_class=0, default_confidence=1.0):
-    data = json.load(open(path))
-    detections = []
-    for shape in data.get('shapes', []):
-        pts = shape.get('points', [])
-        if len(pts) != 2:
-            continue
-        (x1, y1), (x2, y2) = pts
-        x1, x2 = sorted([x1, x2])
-        y1, y2 = sorted([y1, y2])
-        detections.append({
-            "name": shape.get("label", ""),
-            "class": default_class,
-            "confidence": default_confidence,
-            "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
-        })
-    return {"detections": detections}
+def convert_json_format(input_file, output_file):
+    """
+    Convert detection JSON format to AnyLabeling format
+    """
+    # Read input JSON
+    with open(input_file, 'r') as f:
+        input_data = json.load(f)
+    
+    # Create output format structure
+    output_data = {
+        "version": "0.3.3",
+        "flags": {},
+        "shapes": [],
+        "imagePath": input_data["ImagePath"],
+        "imageData": None,
+        "imageHeight": input_data["ImageHeight"],
+        "imageWidth": input_data["ImageWidth"]
+    }
+    
+    # Convert detections to shapes
+    for detection in input_data["Image_detections"]:
+        # Extract box coordinates
+        x1 = detection["box"]["x1"]
+        y1 = detection["box"]["y1"]
+        x2 = detection["box"]["x2"]
+        y2 = detection["box"]["y2"]
+        
+        # Create shape in AnyLabeling format
+        shape = {
+            "label": detection["name"],
+            "text": "",
+            "points": [
+                [x1, y1],
+                [x2, y2]
+            ],
+            "group_id": None,
+            "shape_type": "rectangle",
+            "flags": {}
+        }
+        
+        output_data["shapes"].append(shape)
+    
+    # Write output JSON
+    with open(output_file, 'w') as f:
+        json.dump(output_data, f, indent=4)
 
-input_dir = r"C:\Users\User\Downloads\2images_FK\2images_FK"
+def main():
+    # Define input and output directories
+    input_dir = r"C:\Users\User\Downloads\new"
+    output_dir = r"C:\Users\User\Downloads\new_result"
+    
+    input_dir = Path(input_dir)
+    # Create output directory if it doesn't exist
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Process all JSON files in the input directory
+    json_files = list(input_dir.glob("*.json"))
+    
+    for input_file in json_files:
+        output_file = output_dir / input_file.name
+        try:
+            convert_json_format(input_file, output_file)
+            print(f"Converted {input_file.name} successfully")
+        except Exception as e:
+            print(f"Error processing {input_file.name}: {str(e)}")
+    
+    print(f"Conversion complete. Processed {len(json_files)} files.")
 
-for fname in os.listdir(input_dir):
-    if not fname.lower().endswith('.json'):
-        continue
-    src = os.path.join(input_dir, fname)
-    result = convert_annotation_file(src)
-    dst = os.path.join(input_dir, os.path.splitext(fname)[0] + ".json")
-    json.dump(result, open(dst, 'w'), indent=2)
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
