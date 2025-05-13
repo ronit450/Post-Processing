@@ -17,7 +17,7 @@ class Cleaner:
         self.json_folder_path = json_folder_path
         self.detect_out =detect_output_folder
         self.class_obj_lst = class_obj_lst
-        self.data = pd.read_csv(csv_path)
+        self.data = self.csv_merger(csv_path)
         self.post_obj = PostProcess()
         self.max_workers = max(1, multiprocessing.cpu_count() - 4)
         self.field_json = field_json
@@ -33,7 +33,14 @@ class Cleaner:
         os.makedirs(self.clean_detection_path, exist_ok=True)
         os.makedirs(self.geojson_output, exist_ok=True)
         self.count = 0
-        
+       
+    
+    def csv_merger(self, csv_path):
+        # merging all the csvs 
+        csv_files = [f for f in os.listdir(self.detect_out) if f.endswith('.csv')]
+        df = pd.concat([pd.read_csv(os.path.join(self.detect_out, file)) for file in csv_files], ignore_index=True)
+        return df 
+    
     def process_file(self, file):
         """
         Processes a single file, converting it to a shapefile.
@@ -147,11 +154,12 @@ class Cleaner:
 
 if __name__ == "__main__":
    
-    json_folder =r"C:\Users\User\Downloads\Compressed\ronit_Canola\json"
-    post_detection_out =  r"C:\Users\User\Downloads\Compressed\ronit_Canola\result"
-    csv_path = r"C:\Users\User\Downloads\Compressed\ronit_Canola\ronit_Canola\image_details.csv"
+    json_folder =r"C:\Users\User\Downloads\2277_test\2277_test\json"
+    post_detection_out =  r"C:\Users\User\Downloads\2277_test\2277_test\result"
+    csv_path = r"C:\Users\User\Downloads\image_details (4).csv"
     field_json = r"C:\Users\User\Downloads\field_season_shot (1).json"
-    plot_folder = r"C:\Users\User\Downloads\Compressed\ronit_Canola\images"
+    plot_folder = r"C:\Users\User\Downloads\2277_test\2277_test"
+    csv_folder = r""
     
     
     # define the class list 
@@ -168,7 +176,7 @@ if __name__ == "__main__":
     processor = Cleaner(
         json_folder, 
         post_detection_out, 
-        csv_path, 
+        csv_folder, 
         field_json, 
         class_obj_lst,
         plot_folder
