@@ -1,0 +1,433 @@
+import numpy as np
+from rtree import index
+import numpy as np
+from decimal import Decimal, getcontext
+import os 
+import ast
+import traceback
+import numpy as np
+import cv2  
+import json 
+
+
+
+class GeoJSONConverter:
+    '''
+    Converts detection data to GeoJSON with geospatial coordinates.
+    '''
+    def __init__(self, output_path, corners, image_width, image_height):
+        self.output_path = output_path
+        self.image_height = image_height
+        self.image_width = image_width
+        getcontext().prec = 48
+        self.gps_corners = {
+            "top_left": corners[0],
+            "top_right": corners[1],
+            "bottom_right": corners[2],
+            "bottom_left": corners[3]
+        }
+    
+    def interpolate_to_gps(self, x, y):
+        '''
+        Interpolates image pixel coordinates to GPS coordinates with high precision.
+        Returns Decimal values for maximum precision.
+        '''
+        norm_x = Decimal(x) / Decimal(self.image_width)
+        norm_y = Decimal(y) / Decimal(self.image_height)
+        
+        lon = (
+            Decimal(self.gps_corners["top_left"][0]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(self.gps_corners["top_right"][0]) * norm_x * (1 - norm_y) +
+            Decimal(self.gps_corners["bottom_right"][0]) * norm_x * norm_y +
+            Decimal(self.gps_corners["bottom_left"][0]) * (1 - norm_x) * norm_y
+        )
+        
+        lat = (
+            Decimal(self.gps_corners["top_left"][1]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(self.gps_corners["top_right"][1]) * norm_x * (1 - norm_y) +
+            Decimal(self.gps_corners["bottom_right"][1]) * norm_x * norm_y +
+            Decimal(self.gps_corners["bottom_left"][1]) * (1 - norm_x) * norm_y
+        )
+        
+        return f"{lat:.42f}", f"{lon:.42f}"
+    
+    def convert_to_geojson(self, data):
+        area_in_sq_m = round(self.image_width * self.image_height, 3)
+        count = 0
+        features = []
+
+        for shape in data.get("shapes", []):
+            if shape.get("shape_type") != "point":
+                continue  # Only process point annotations
+
+            x, y = shape["points"][0]
+            lat_str, lon_str = self.interpolate_to_gps(x, y)
+            temp_area = area_in_sq_m  # Area in acres
+
+            # Optionally use shape["label"] or default label
+            label = shape.get("label", "point")
+
+            feature = self._create_point_feature({"label": "corty"}, lon_str, lat_str, temp_area)
+            features.append(feature)
+            count += 1
+
+        per_acre_production = count / (area_in_sq_m / 4046.85642)
+        geojson = self._build_geojson(features, area_in_sq_m, per_acre_production)
+
+        with open(self.output_path, 'w') as geojson_file:
+            geojson_file.write(geojson)
+
+        return count
+
+
+    def _create_point_feature(self, detection, lon_str, lat_str, temp_area):
+        feature = [
+            '    {',
+            '      "type": "Feature",',
+            '      "geometry": {',
+            '        "type": "Point",',
+            f'        "coordinates": [{lon_str}, {lat_str}]',
+            '      },',
+            '      "properties": {',
+            f'        "name": "corty",',
+            f'        "area_m2": {temp_area},',    
+            '        "type": "Point"',
+            '      }',
+            '    }'
+        ]
+        return '\n'.join(feature)
+
+
+    def _build_geojson(self, features, area, per_acre):
+        features_str = ',\n'.join(features)
+        
+        geojson_parts = [
+            '{',
+            '  "type": "FeatureCollection",',
+            '  "properties": {',
+            f'    "Area": {area},',
+            f'    "Per Acre Production": {per_acre}',
+            '  },',
+            '  "features": [',
+            f'{features_str}',
+            '  ]',
+            '}'
+        ]
+        
+        return '\n'.join(geojson_parts)
+
+
+
+class DetectionProcessor:
+    '''
+    Processes and filters detections based on specific criteria.
+    '''
+    def __init__(self, input_path, gcd, class_obj_lst):
+        self.input_path = input_path
+        self.gcd = gcd
+        self.class_obj_lst = class_obj_lst
+        self.detections = self.load_detections()
+    def load_detections(self):
+        '''
+        Loads detections from a JSON file.
+        '''
+        with open(self.input_path) as f:
+            data = json.load(f)
+        return data['detections']
+    def calculate_center_and_fixed_bbox(self, detections):
+        '''
+        Calculates center points and fixes bounding box size for each detection.
+        '''
+        processed_detections = []
+        unprocessed_detections = []
+        for det in detections:
+        
+            box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
+            # now soring the unfiltered detection area 
+            
+            unflitered_area = abs(det['box']['x2'] - det['box']['x1']) * abs(det['box']['y2'] - det['box']['y1'])
+            unflitered_area_meters = (unflitered_area) * (self.gcd ** 2)
+            det['unfiltered_area_m2'] = unflitered_area_meters
+            
+            
+            # so now I have the name of that detection and I can easily map it to its size
+            box_size = self.class_obj_lst[det['name']]
+            half_size = (box_size / 2) / self.gcd
+            center = (box[:2] + box[2:]) / 2
+            new_box = np.hstack([center - half_size, center + half_size])
+            det['box'] = {
+                'x1': new_box[0],
+                'y1': new_box[1],
+                'x2': new_box[2],
+                'y2': new_box[3]
+            }
+            processed_detections.append(det)
+        else:
+            unprocessed_detections.append(det)
+        return processed_detections, unprocessed_detections
+    
+    def remove_contained_boxes(self, detections):
+        """
+        Keep only the largest-class detection for any overlapping boxes, 
+        even if overlap is as small as 1%.
+        Uses an R-tree to get O(n log n) performance.
+        """
+        # 1) sort descending by "real" size so big boxes come first
+        dets = sorted(
+            detections,
+            key=lambda d: self.class_obj_lst.get(d['name'], 0),
+            reverse=True
+        )
+
+        keep = []
+        rtree_idx = index.Index()
+
+        for det in dets:
+            x1, y1 = det['box']['x1'], det['box']['y1']
+            x2, y2 = det['box']['x2'], det['box']['y2']
+            bbox = (x1, y1, x2, y2)
+
+            # find any previously kept box whose envelope overlaps
+            hits = list(rtree_idx.intersection(bbox))
+
+            # check if *any* of those has ANY overlap with this box
+            overlapped = False
+            for idx in hits:
+                k = keep[idx]['box']
+                
+                # Check for ANY overlap between boxes
+                # Two boxes overlap if:
+                # - One box's left edge is to the left of other box's right edge, AND
+                # - One box's right edge is to the right of other box's left edge, AND
+                # - One box's top edge is above other box's bottom edge, AND
+                # - One box's bottom edge is below other box's top edge
+                if (x1 < k['x2'] and x2 > k['x1'] and
+                    y1 < k['y2'] and y2 > k['y1']):
+                    overlapped = True
+                    break
+
+            if not overlapped:
+                # no larger box overlaps it → keep & index
+                rtree_idx.insert(len(keep), bbox)
+                keep.append(det)
+
+        return keep
+    def detect_and_merge(self, detections):
+        '''
+        Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
+        '''
+        final_detections = []
+        rtree_idx = index.Index()
+        for i, det in enumerate(detections):
+            bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
+            rtree_idx.insert(i, bbox)
+        used = [False] * len(detections)
+        for i, det1 in enumerate(detections):
+            if used[i]:
+                continue
+            merged_box = det1['box']
+            used[i] = True
+            merged = True
+            while merged:
+                merged = False
+                overlapping_idxs = list(rtree_idx.intersection((merged_box['x1'], merged_box['y1'], merged_box['x2'], merged_box['y2'])))
+                for j in overlapping_idxs:
+                    if not used[j] and detections[j]['name'] == det1['name']:
+                        # Check if boxes overlap
+                        if (merged_box['x1'] < detections[j]['box']['x2'] and
+                            merged_box['x2'] > detections[j]['box']['x1'] and
+                            merged_box['y1'] < detections[j]['box']['y2'] and
+                            merged_box['y2'] > detections[j]['box']['y1']):
+                            merged_box['x1'] = min(merged_box['x1'], detections[j]['box']['x1'])
+                            merged_box['y1'] = min(merged_box['y1'], detections[j]['box']['y1'])
+                            merged_box['x2'] = max(merged_box['x2'], detections[j]['box']['x2'])
+                            merged_box['y2'] = max(merged_box['y2'], detections[j]['box']['y2'])
+                            used[j] = True
+                            merged = True
+            final_detections.append({
+                'name': det1['name'],
+                'box': merged_box,
+                'confidence': det1.get('confidence', 1.0), 
+            })
+        return final_detections
+    
+    
+    def plotter(self, image_path, detections, output_path): 
+        img = cv2.imread(image_path)  
+        if img is None:
+            raise ValueError(f"Failed to load image from {image_path}")
+
+        for det in detections:
+            try:
+                x1, y1 = det['box']['x1'], det['box']['y1']
+                x2, y2 = det['box']['x2'], det['box']['y2']
+                
+                x1 = int(round(det['box']['x1']))
+                y1 = int(round(det['box']['y1']))
+                x2 = int(round(det['box']['x2']))
+                y2 = int(round(det['box']['y2']))
+
+                label = det.get('name', 'object')
+                confidence = det.get('confidence', 0)
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.putText(img, f"{label} {confidence:.2f}", (x1, y1 - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            except KeyError as e:
+                print(f"Missing key in detection: {e}")
+
+        success = cv2.imwrite(output_path, img)
+        if not success:
+            raise IOError(f"Failed to write image to {output_path}")
+
+                
+
+    def calculate_center(self, detections):
+        '''
+        Computes the center coordinates of each bounding box and structures the output.
+        '''
+        processed_detections = []
+        for det in detections:
+            box = det['box']
+            x_center = (box['x1'] + box['x2']) / 2
+            y_center = (box['y1'] + box['y2']) / 2
+            processed_detections.append({
+                'name': det['name'],
+                'coordinates': [x_center, y_center],
+                'box': { 
+                    'x1': box['x1'],
+                    'y1': box['y1'],
+                    'x2': box['x2'],
+                    'y2': box['y2']
+                },
+                'confidence': det.get('confidence', 1.0),
+                'unfiltered_area_m2': det.get('unfiltered_area_m2', 0)
+            })
+        return processed_detections
+    
+    def calculate_image_center(self, corners):
+        latitudes = [corner[1] for corner in corners]
+        longitudes = [corner[0] for corner in corners]
+
+        center_lat = sum(latitudes) / len(latitudes)
+        center_lon = sum(longitudes) / len(longitudes)
+        
+        return center_lat, center_lon
+            
+    def process_detections(self, clean_json_path, width, height, image_name, corners, gsd):
+        '''
+        Processes detections and returns cleaned results.
+        '''
+        processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
+        combined_detections = processed_detections + unprocessed_detections
+        merged_detections = self.detect_and_merge(combined_detections)
+        filtered = self.remove_contained_boxes(merged_detections)
+        
+        center_lat, center_lon = self.calculate_image_center(corners)
+        center_detection = self.calculate_center(filtered)
+        
+        final_json = {
+            "ImageHeight": height,
+            "ImageWidth": width,
+            "ImagePath": image_name,
+            "Image_center": (center_lat, center_lon), 
+            'gsd': gsd,
+            "detections": center_detection
+        }
+        with open(clean_json_path, 'w') as outfile:
+            # because in final jsons we only need the pt detections
+            json.dump(final_json, outfile, indent=4)
+        return {'detections': filtered}
+
+
+
+class Analysis:
+    def __init__(self, field_json, gsd, image_width, image_height, label, count, corners):
+        # self.field_json = field_json
+        self.image_width = image_width
+        self.image_height = image_height
+        self.gsd = gsd
+        self.label = label
+        self.count = count 
+        self.corners = corners
+        self.company = "Corteva"
+        with open(field_json, 'r') as data:
+            self.field_json = json.load(data)
+            
+        self.thresholds = {
+        "Hytech": [(0.00247, 0), (0.00123, 1), (0.00025, 2), (0, 3)],
+        "Corteva": [(0.01236, 0), (0.00519, 1), (0.00025, 2), (0, 3)],
+        "Bayer": [(0.01236, 0), (0.00618, 1), (0.00123, 2), (0, 3)],
+        "Nutrien": [(0.00247, 0), (0.00123, 1), (0.00025, 2), (0, 3)],
+    }
+    
+    
+    def summary_class_calculator(self, number):
+        if number > 50:
+            return 0
+        elif number >=21 and number <= 50:
+            return 1
+        elif number >= 1 and number <= 20:
+            return 2
+        else:
+            return 3
+        
+    
+    def count_detections(self, json_path):
+        with open(json_path, 'r') as file:
+            data = json.load(file)
+    
+        detections = data.get("Image_detections", [])
+        return len(detections)
+    
+    
+
+    def assign_class(self, count, company):
+        for limit, cls in self.thresholds.get(company, []):
+            if count > limit:
+                return cls
+        return 3
+        
+        
+
+    def one_snap_analysis(self):
+        type_label = 'OffType'
+        label = os.path.splitext(os.path.splitext(os.path.basename(self.label))[0])[0]
+        total_crop_area_sq = round((self.image_width * self.gsd) * (self.image_height * self.gsd), 2)
+        
+        
+        analysis_results = {
+            "type": type_label,
+            "label": label,
+            "total_crop_area_sq": round(total_crop_area_sq,2),
+            "crop_type": "Canola Pre-Scout",
+            "offType": self.count, 
+            "class": self.assign_class(self.count, self.company),
+        }
+
+        return analysis_results , total_crop_area_sq
+            
+    
+    
+    def generate_field_analysis(self, total_count, total_image_area, image_count):
+        
+        total_crop_area_acres = self.field_json['polygon']['size']
+        temp_number = (4046.85642/ (image_count * 10))* total_count
+        field_analysis_data = {
+            "label": "summary",
+            "type": "OffType",
+            "company": "Corteva",
+            "field_id": f"Field {self.field_json.get('id', '')}",
+            "seeded_area" : self.field_json.get('polygon', {}).get('size', 0),
+            "crop_type": "Canola Pre-Scout",
+            "total_scouted_area" : total_image_area,
+            "total_scouted_area_1" : image_count * 10,  
+            "farm": self.field_json.get('name', ""),
+            "offtypes_per_acre": temp_number,  # Convert m^2 to acres
+            "seeded_date": self.field_json.get('seeding_date', ""),
+            "flight_scan_date": self.field_json.get('flight_scan_date', ""),
+            "total_crop_area_acres": round(total_crop_area_acres,2),
+            "off_type_Count": total_count,
+            "class": self.summary_class_calculator(temp_number),
+        }
+
+        return field_analysis_data

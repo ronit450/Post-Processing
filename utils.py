@@ -324,7 +324,8 @@ class GeoJSONConverter:
 
             center_x = (x1 + x2) / 2
             lat_str, lon_str = self.interpolate_to_gps(center_x, center_y)
-            feature = self._create_point_feature(detection, lon_str, lat_str)
+            temp_area = area_in_sq_m / 4046.85642
+            feature = self._create_point_feature(detection, lon_str, lat_str, temp_area)
             count += 1
             
 
@@ -338,7 +339,7 @@ class GeoJSONConverter:
         
         return count 
 
-    def _create_point_feature(self, detection, lon_str, lat_str):
+    def _create_point_feature(self, detection, lon_str, lat_str, temp_area):
         feature = [
             '    {',
             '      "type": "Feature",',
@@ -349,6 +350,7 @@ class GeoJSONConverter:
             '      "properties": {',
             f'        "name": "{detection["name"]}",',
             f'        "confidence": {detection.get("confidence", 0)},',
+            f'        "area_m2": {temp_area},',    
             f'        "unfiltered_area_m2": {detection.get("unfiltered_area_m2", 0)},',
             '        "type": "Point"',
             '      }',
@@ -390,6 +392,7 @@ class GeoJSONConverter:
         ]
         
         return '\n'.join(geojson_parts)
+
 
 class Analysis:
     def __init__(self, field_json, gsd, image_width, image_height, label, count, corners):
@@ -461,7 +464,7 @@ class Analysis:
         
 
     def one_snap_analysis(self):
-        type_label = 'PlantCount'
+        type_label = 'FemalePlantCount'
         label = os.path.splitext(os.path.splitext(os.path.basename(self.label))[0])[0]
         total_crop_area_sq = round((self.image_width * self.gsd) * (self.image_height * self.gsd), 2)
         target_population = round(self.field_json.get('target_stand_per_acre') / SQUARE_METER, 3)
@@ -511,7 +514,7 @@ class Analysis:
 
         field_analysis_data = {
             "label": "summary",
-            "type": "PlantCount",
+            "type": 'FemalePlantCount',
             "company": "",
             "field_id": f"Field {self.field_json.get('id', '')}",
             "boundary_acres": round(total_crop_area_acres,2), #Done 

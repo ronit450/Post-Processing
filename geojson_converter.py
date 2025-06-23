@@ -1,66 +1,130 @@
+import os
 import json
-import geojson
-from PIL import Image
-import piexif
+import pandas as pd
+import ast
+from decimal import Decimal, getcontext
+from geopy.distance import geodesic
 
-class GeoJSONConverter:
-    def __init__(self, input_path, output_path, image_path):
-        self.input_path = input_path
-        self.output_path = output_path
-        corners, gcd = self.read_corners(image_path)
-        self.top_left = (corners[1][1], corners[1][0])  # lat, lon of NW corner
-        self.bottom_right = (corners[3][1], corners[3][0])  
-        with Image.open(image_path) as img:
-            self.image_width, self.image_height = img.size  
+class GeoJSONFolderConverter:
+    def __init__(self, input_folder, output_folder, metadata_csv_path):
+        self.input_folder = input_folder
+        self.output_folder = output_folder
+        self.metadata_df = pd.read_csv(metadata_csv_path)
+        os.makedirs(self.output_folder, exist_ok=True)
+        getcontext().prec = 48
 
-    def read_corners(self, image_path):
+    def read_corners_and_gsd_csv(self, data, json_path):
         try:
-            exif_dict = piexif.load(image_path)
-            user_comment = exif_dict["Exif"].get(piexif.ExifIFD.UserComment)
-            if user_comment and user_comment.startswith(b"XMP\x00"):
-                json_data = user_comment[4:].decode('utf-8')
-                metadata = json.loads(json_data)
-                return metadata.get("corner_coordinates"), metadata.get("gsd")
+            json_filename = os.path.basename(json_path).replace('.json', '.JPG')
+            matching_row = data[data['image_name'] == json_filename]
+            if not matching_row.empty:
+                row = matching_row.iloc[0]
+                coordinates = ast.literal_eval(row['corners'])
+                gsd = row['corrected_gsd']
+                width = int(row['image_width'])
+                height = int(row['image_height'])
+                print(coordinates)
+                return coordinates, gsd, width, height, json_filename
         except Exception as e:
-            print(f"Error reading metadata from {image_path}: {str(e)}")
-        return None, None
+            print(f"Error reading metadata from {json_path}: {str(e)}")
+        return None, None, None, None, None
 
-    def interpolate_to_gps(self, x, y):
-        lon = self.top_left[1] + (x / self.image_width) * (self.bottom_right[1] - self.top_left[1])
-        lat = self.top_left[0] + (y / self.image_height) * (self.bottom_right[0] - self.top_left[0])
-        return lat, lon
+    def interpolate_to_gps(self, x, y, gps_corners, width, height):
+        norm_x = Decimal(x) / Decimal(width)
+        norm_y = Decimal(y) / Decimal(height)
 
-    def convert_to_geojson(self):
-        with open(self.input_path) as f:
+        lon = (
+            Decimal(gps_corners["top_left"][1]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(gps_corners["top_right"][1]) * norm_x * (1 - norm_y) +
+            Decimal(gps_corners["bottom_right"][1]) * norm_x * norm_y +
+            Decimal(gps_corners["bottom_left"][1]) * (1 - norm_x) * norm_y
+        )
+
+        lat = (
+            Decimal(gps_corners["top_left"][0]) * (1 - norm_x) * (1 - norm_y) +
+            Decimal(gps_corners["top_right"][0]) * norm_x * (1 - norm_y) +
+            Decimal(gps_corners["bottom_right"][0]) * norm_x * norm_y +
+            Decimal(gps_corners["bottom_left"][0]) * (1 - norm_x) * norm_y
+        )
+
+        return f"{lat:.48f}", f"{lon:.48f}"
+
+    def convert_file(self, json_path):
+        with open(json_path) as f:
             data = json.load(f)
+
+        corners, gsd, width, height, image_name = self.read_corners_and_gsd_csv(self.metadata_df, json_path)
+        # width = 8192
+        # height = 6144
+        if not corners:
+            print(f"Skipping {json_path} — missing metadata.")
+            return
+
+        gps_corners = {
+            "top_left": (corners[0][1], corners[0][0]),
+            "top_right": (corners[1][1], corners[1][0]),
+            "bottom_right": (corners[2][1], corners[2][0]),
+            "bottom_left": (corners[3][1], corners[3][0])
+        }
+        
+
+
         features = []
-        for detection in data['detections']:
-            x1, y1 = detection['box']['x1'], detection['box']['y1']
-            x2, y2 = detection['box']['x2'], detection['box']['y2']
-            lat1, lon1 = self.interpolate_to_gps(x1, y1)
-            lat2, lon2 = self.interpolate_to_gps(x2, y2)
-            polygon = geojson.Polygon([[
-                [lon1, lat1], [lon1, lat2], [lon2, lat2], [lon2, lat1], [lon1, lat1]
-            ]])
-            feature = geojson.Feature(
-                geometry=polygon,
-                properties={
-                    "name": detection['name'],
-                    "class": detection['class'],
-                    "confidence": detection['confidence']
-                }
-            )
-            features.append(feature)
-        feature_collection = geojson.FeatureCollection(features)
-        with open(self.output_path, 'w') as geojson_file:
-            geojson.dump(feature_collection, geojson_file, indent=4)
+        for plant in data.get("plants", []):
+            centroid = plant.get("centroid", {})
+            if "x" not in centroid or "y" not in centroid:
+                continue
+
+            x, y = centroid["x"], centroid["y"]
+            lat_str, lon_str = self.interpolate_to_gps(x, y, gps_corners, width, height)
+
+            feature = [
+                '    {',
+                '      "type": "Feature",',
+                '      "geometry": {',
+                '        "type": "Point",',
+                f'        "coordinates": [{lon_str}, {lat_str}]',
+                '      },',
+                '      "properties": {',
+                f'        "name": "{plant.get("name", "unknown")}",',
+                f'        "image": "{image_name}",',
+                f'        "gsd": {gsd},',
+                f'        "confidence": {plant.get("confidence", 0)}',
+                '      }',
+                '    }'
+            ]
+            features.append('\n'.join(feature))
+
+        features_str = ',\n'.join(features)
+        geojson = [
+            '{',
+            '  "type": "FeatureCollection",',
+            '  "features": [',
+            f'{features_str}',
+            '  ]',
+            '}'
+        ]
+        geojson_str = '\n'.join(geojson)
+
+        output_path = os.path.join(self.output_folder, os.path.basename(json_path).replace('.json', '.geojson'))
+        with open(output_path, "w") as f:
+            f.write(geojson_str)
+
+    def convert_all(self):
+        for file in os.listdir(self.input_folder):
+            if file.endswith(".json"):
+                self.convert_file(os.path.join(self.input_folder, file))
 
 
-image_path = r"C:\Users\User\Downloads\Aiman-file\copy_DJI_20240622150315_0011.JPG"
-converter = GeoJSONConverter(
-    input_path=r"C:\Users\User\Downloads\New folder\New folder\DJI_20240622150315_0011.JPG.json", 
-    output_path=r"C:\Users\User\Downloads\Aiman-file\result.geojson",
-    image_path= image_path,
+# Usage
+input_folder = r"C:\Users\User\Downloads\canola_2025\wrong_405_2334"
+output_folder = r"C:\Users\User\Downloads\canola_2025\wrong_405_2334_geojson"
+metadata_csv_path = r"C:\Users\User\Downloads\canola_2025\wrong_405_2334\csvs\image_details.csv"
 
+converter = GeoJSONFolderConverter(
+    input_folder=input_folder,
+    output_folder=output_folder,
+    metadata_csv_path=metadata_csv_path
 )
-converter.convert_to_geojson()
+
+converter.convert_all()
