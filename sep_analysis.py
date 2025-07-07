@@ -132,10 +132,10 @@ class SepAnaly:
 
 if __name__ == "__main__":
     # Example usage
-    geojson_folder = r"C:\Users\User\Downloads\saad_geojson\Geojson"
+    geojson_folder = r"C:\Users\User\Downloads\Male_geojsons\Male_geojsons"
     image_details = r"C:\Users\User\Downloads\image_details_chunk1 (1).csv"
     field_json = r"C:\Users\User\Downloads\field_season_shot (18).json"
-    detect_output_folder = r"C:\Users\User\Downloads\saad_geojson\Geojson_result"
+    detect_output_folder = r"C:\Users\User\Downloads\Male_geojsons\Male_geojsons\Geojson_result"
 
     sep_analy = SepAnaly(geojson_folder, image_details, detect_output_folder, field_json)
     sep_analy.process()

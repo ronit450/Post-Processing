@@ -35,7 +35,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.JPG')
+            image_name = image_name.removesuffix(".out")
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -514,7 +514,7 @@ class Analysis:
 
         field_analysis_data = {
             "label": "summary",
-            "type": 'FemalePlantCount',
+            "type": 'PlantCount',
             "company": "",
             "field_id": f"Field {self.field_json.get('id', '')}",
             "boundary_acres": round(total_crop_area_acres,2), #Done 
