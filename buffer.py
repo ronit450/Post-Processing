@@ -141,12 +141,12 @@ class Cleaner:
 
 
 if __name__ == "__main__":
-    box_size = 0.06 # this is in meters
-    json_folder =r"C:\Users\User\Downloads\corty-test\test-data"
-    post_detection_out =  r"C:\Users\User\Downloads\corty-test\test-data_results"
-    csv_path = r"C:\Users\User\Downloads\corty-test\image_details.csv"
+    box_size = 0.02 # this is in meters
+    json_folder =r"C:\Users\User\Downloads\momna_check\jsons"
+    post_detection_out =  r"C:\Users\User\Downloads\momna_check\jsons_result"
+    csv_path = r"C:\Users\User\Downloads\image_details (13).csv"
     field_json = r"C:\Users\User\Downloads\tree_field.json"
-    plot_folder = r"C:\Users\User\Downloads\corty-test\test-data"
+    plot_folder = None
     
 
     

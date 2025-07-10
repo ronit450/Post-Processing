@@ -36,7 +36,7 @@ class PostProcess:
     def read_corners_and_gsd_csv(self, data, json_path):
         try:
             image_name = os.path.basename(json_path)
-            image_name = image_name.replace('.json', '.jpg')
+            image_name = image_name.replace('.json', '.JPG')
             row = data[data['image_name'] == image_name]
             if not row.empty:
                 coordinates = (row.iloc[0]['corners'])
@@ -60,6 +60,7 @@ class DetectionProcessor:
         self.gcd = gcd
         self.box_size = box_size
         self.detections = self.load_detections()
+    
     def load_detections(self):
         '''
         Loads detections from a JSON file.
@@ -67,43 +68,60 @@ class DetectionProcessor:
         with open(self.input_path) as f:
             data = json.load(f)
         return data['detections']
+    
     def calculate_center_and_fixed_bbox(self, detections):
         '''
         Calculates center points and fixes bounding box size for each detection.
+        Preserves original box for filtered detections.
         '''
         processed_detections = []
         unprocessed_detections = []
         for det in detections:
-            if 'pt' in det['name']:
-                box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
-                half_size = (self.box_size) / self.gcd
-                center = (box[:2] + box[2:]) / 2
-                new_box = np.hstack([center - half_size, center + half_size])
-                det['box'] = {
-                    'x1': new_box[0],
-                    'y1': new_box[1],
-                    'x2': new_box[2],
-                    'y2': new_box[3]
-                }
-                processed_detections.append(det)
-            else:
-                unprocessed_detections.append(det)
+            original_box = det['box'].copy()
+            
+            box = np.array([det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2']])
+            half_size = (self.box_size) / self.gcd
+            center = (box[:2] + box[2:]) / 2
+            new_box = np.hstack([center - half_size, center + half_size])
+            
+            # Update with fixed-size box
+            det['box'] = {
+                'x1': new_box[0],
+                'y1': new_box[1],
+                'x2': new_box[2],
+                'y2': new_box[3]
+            }
+            
+            # Store original box in the detection
+            det['original_box'] = original_box
+            processed_detections.append(det)
+        else:
+            unprocessed_detections.append(det)
         return processed_detections, unprocessed_detections
+    
     def detect_and_merge(self, detections):
         '''
         Merges overlapping detections based on bounding box intersection using iterative merging with rtree.
+        Preserves original boxes for merged detections.
         '''
         final_detections = []
         rtree_idx = index.Index()
         for i, det in enumerate(detections):
             bbox = (det['box']['x1'], det['box']['y1'], det['box']['x2'], det['box']['y2'])
             rtree_idx.insert(i, bbox)
+        
         used = [False] * len(detections)
         for i, det1 in enumerate(detections):
             if used[i]:
                 continue
-            merged_box = det1['box']
+            merged_box = det1['box'].copy()
             used[i] = True
+            
+            # Collect original boxes from all merged detections
+            original_boxes = []
+            if 'original_box' in det1:
+                original_boxes.append(det1['original_box'])
+            
             merged = True
             while merged:
                 merged = False
@@ -119,13 +137,26 @@ class DetectionProcessor:
                             merged_box['y1'] = min(merged_box['y1'], detections[j]['box']['y1'])
                             merged_box['x2'] = max(merged_box['x2'], detections[j]['box']['x2'])
                             merged_box['y2'] = max(merged_box['y2'], detections[j]['box']['y2'])
+                            
+                            # Collect original box if it exists
+                            if 'original_box' in detections[j]:
+                                original_boxes.append(detections[j]['original_box'])
+                            
                             used[j] = True
                             merged = True
-            final_detections.append({
+            
+            result_det = {
                 'name': det1['name'],
                 'box': merged_box,
-                'confidence': det1.get('confidence', 1.0), 
-            })
+                'confidence': det1.get('confidence', 1.0),
+            }
+            
+            # Add original boxes if any were collected
+            if original_boxes:
+                result_det['original_boxes'] = original_boxes
+            
+            final_detections.append(result_det)
+        
         return final_detections
 
     def plotter(self, image_path, detections, output_path): 
@@ -144,23 +175,26 @@ class DetectionProcessor:
     def calculate_center(self, detections):
         '''
         Computes the center coordinates of each bounding box and structures the output.
+        Includes original box if available.
         '''
         processed_detections = []
         for det in detections:
             box = det['box']
             x_center = (box['x1'] + box['x2']) / 2
             y_center = (box['y1'] + box['y2']) / 2
-            processed_detections.append({
+            
+            result = {
                 'name': det['name'],
                 'coordinates': [x_center, y_center],
-                # 'box': { 
-                #     'x1': box['x1'],
-                #     'y1': box['y1'],
-                #     'x2': box['x2'],
-                #     'y2': box['y2']
-                # },
                 'confidence': det.get('confidence', 1.0),
-            })
+            }
+            
+            # Include original box if it exists
+            if 'original_box' in det:
+                result['original_box'] = det['original_box']
+            
+            processed_detections.append(result)
+        
         return processed_detections
     
     def calculate_image_center(self, corners):
@@ -174,7 +208,7 @@ class DetectionProcessor:
             
     def process_detections(self, clean_json_path, width, height, image_name, corners, gsd):
         '''
-        Processes detections and returns cleaned results.
+        Processes detections and returns cleaned results with original boxes preserved.
         '''
         processed_detections, unprocessed_detections = self.calculate_center_and_fixed_bbox(self.detections)
         combined_detections = processed_detections + unprocessed_detections
@@ -186,7 +220,7 @@ class DetectionProcessor:
             "ImageHeight": height,
             "ImageWidth": width,
             "ImagePath": image_name,
-            "Image_center": (center_lat, center_lon), \
+            "Image_center": (center_lat, center_lon),
             "Image_detections": merged_detections,
             'gsd': gsd,
             "detections": center_detection
